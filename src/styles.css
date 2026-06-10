@@ -1,0 +1,209 @@
+:root {
+  color: #f5eddc;
+  background: #16151a;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button {
+  font: inherit;
+}
+
+.runes {
+  min-height: 100vh;
+  padding: 32px;
+  background:
+    linear-gradient(135deg, rgba(84, 160, 168, 0.18), transparent 38%),
+    linear-gradient(180deg, #16151a, #2d2530 56%, #171b22);
+}
+
+.hero,
+.game {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.hero {
+  margin-bottom: 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: end;
+}
+
+.eyebrow,
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+.eyebrow {
+  color: #d7b84f;
+  font-weight: 900;
+}
+
+h1 {
+  max-width: 710px;
+  margin-bottom: 0;
+  font-size: clamp(2.2rem, 6vw, 5rem);
+  line-height: 0.95;
+}
+
+.level-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.level-tabs button,
+.piece-head button,
+.rotate,
+.pieces button,
+.board button {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.level-tabs button,
+.piece-head button,
+.rotate {
+  padding: 11px 13px;
+  background: #39313c;
+  color: #f5eddc;
+  font-weight: 800;
+}
+
+.level-tabs button.active,
+.rotate {
+  background: #d7b84f;
+  color: #17151a;
+}
+
+.game {
+  display: grid;
+  grid-template-columns: 1fr 330px;
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  border-radius: 8px;
+  border: 1px solid rgba(215, 184, 79, 0.18);
+  background: rgba(24, 22, 29, 0.86);
+  padding: 18px;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.25);
+}
+
+.board {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 620px);
+  margin: 0 auto;
+}
+
+.board button {
+  aspect-ratio: 1;
+  background: #27242c;
+  border: 1px solid rgba(245, 237, 220, 0.08);
+  display: grid;
+  place-items: center;
+  padding: 6px;
+}
+
+.board button.target {
+  background: #3b3540;
+  box-shadow: inset 0 0 0 2px rgba(215, 184, 79, 0.45);
+}
+
+.board i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  box-shadow: 0 0 18px currentColor;
+}
+
+.hint {
+  margin: 16px 0 0;
+  color: #cfc3b3;
+  line-height: 1.55;
+}
+
+.hint.solved {
+  color: #95e2a4;
+  font-weight: 900;
+}
+
+.piece-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.rotate {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.pieces {
+  display: grid;
+  gap: 10px;
+}
+
+.pieces button {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  text-align: left;
+  background: #2b2730;
+  color: #f5eddc;
+}
+
+.pieces button.active {
+  outline: 3px solid #d7b84f;
+}
+
+.pieces span {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .level-tabs {
+    justify-content: flex-start;
+  }
+
+  .game {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .runes {
+    padding: 18px;
+  }
+
+  .board {
+    gap: 5px;
+  }
+}
