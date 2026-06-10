@@ -183,8 +183,204 @@ h1 {
   border-radius: 8px;
 }
 
+.level-hall {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.hall-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.progress-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(215, 184, 79, 0.14);
+  border: 1px solid rgba(215, 184, 79, 0.35);
+}
+
+.progress-badge strong {
+  font-size: 1.6rem;
+  color: #d7b84f;
+  font-weight: 900;
+}
+
+.progress-badge span {
+  color: #cfc3b3;
+  font-weight: 600;
+}
+
+.level-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.level-card {
+  text-align: left;
+  border: 1px solid rgba(215, 184, 79, 0.18);
+  background: rgba(24, 22, 29, 0.86);
+  border-radius: 14px;
+  padding: 22px;
+  cursor: pointer;
+  color: inherit;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+
+.level-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(215, 184, 79, 0.55);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.32);
+}
+
+.level-card.completed {
+  border-color: rgba(149, 226, 164, 0.45);
+  background: linear-gradient(160deg, rgba(24, 22, 29, 0.9), rgba(149, 226, 164, 0.06));
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.level-index {
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #8c8294;
+}
+
+.completed-badge {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #95e2a4;
+  background: rgba(149, 226, 164, 0.12);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.level-name {
+  font-size: 1.5rem;
+  margin-bottom: 14px;
+  font-weight: 900;
+}
+
+.level-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cfc3b3;
+  font-size: 0.92rem;
+}
+
+.meta-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #3b3540;
+  box-shadow: inset 0 0 0 2px rgba(215, 184, 79, 0.35);
+}
+
+.board-icon {
+  background: #3b3540;
+}
+
+.piece-icon {
+  background: #54a0a8;
+  box-shadow: none;
+  border-radius: 4px;
+}
+
+.clock-icon {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid #8c8294;
+  box-shadow: none;
+  position: relative;
+}
+
+.clock-icon::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 5px;
+  background: #8c8294;
+  top: 2px;
+  left: 3px;
+  transform-origin: bottom center;
+}
+
+.level-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid rgba(245, 237, 220, 0.08);
+}
+
+.last-played {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8c8294;
+  font-size: 0.85rem;
+}
+
+.enter-arrow {
+  color: #d7b84f;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.game-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.current-level {
+  font-weight: 800;
+  color: #d7b84f;
+}
+
+.back-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(215, 184, 79, 0.35);
+  background: rgba(215, 184, 79, 0.08);
+  color: #f5eddc;
+  cursor: pointer;
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
+
+.back-btn:hover {
+  background: rgba(215, 184, 79, 0.18);
+}
+
 @media (max-width: 900px) {
-  .hero {
+  .hero,
+  .hall-header {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -196,6 +392,10 @@ h1 {
   .game {
     grid-template-columns: 1fr;
   }
+
+  .level-cards {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -205,5 +405,21 @@ h1 {
 
   .board {
     gap: 5px;
+  }
+
+  .level-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-badge {
+    padding: 8px 14px;
+  }
+
+  .progress-badge strong {
+    font-size: 1.3rem;
+  }
+
+  .game-header {
+    flex-wrap: wrap;
   }
 }

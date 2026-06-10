@@ -28,6 +28,7 @@ type Save = {
   levelId: string;
   placements: Placement[];
   completed: string[];
+  lastPlayed: Record<string, string>;
 };
 
 const storageKey = "hxwl-5-runes";
@@ -113,9 +114,13 @@ function rotate(cells: Cell[], turns: number): Cell[] {
 
 function loadSave(): Save {
   try {
-    return JSON.parse(localStorage.getItem(storageKey) || "") as Save;
+    const parsed = JSON.parse(localStorage.getItem(storageKey) || "") as Save;
+    if (!parsed.lastPlayed) {
+      parsed.lastPlayed = {};
+    }
+    return parsed;
   } catch {
-    return { levelId: levels[0].id, placements: [], completed: [] };
+    return { levelId: levels[0].id, placements: [], completed: [], lastPlayed: {} };
   }
 }
 
@@ -123,10 +128,93 @@ function cellKey(row: number, col: number) {
   return `${row}:${col}`;
 }
 
+function formatLastPlayed(isoString?: string): string {
+  if (!isoString) return "尚未游玩";
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "刚刚";
+  if (diffMins < 60) return `${diffMins} 分钟前`;
+  if (diffHours < 24) return `${diffHours} 小时前`;
+  if (diffDays < 7) return `${diffDays} 天前`;
+  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+type View = "hall" | "game";
+
+function LevelSelectHall({
+  levels,
+  save,
+  onSelectLevel
+}: {
+  levels: Level[];
+  save: Save;
+  onSelectLevel: (levelId: string) => void;
+}) {
+  const completedCount = save.completed.length;
+  const totalCount = levels.length;
+
+  return (
+    <section className="level-hall">
+      <div className="hall-header">
+        <div>
+          <p className="eyebrow">符文拼接室</p>
+          <h1>选择关卡</h1>
+        </div>
+        <div className="progress-badge">
+          <strong>{completedCount}</strong>
+          <span>/ {totalCount} 已完成</span>
+        </div>
+      </div>
+      <div className="level-cards">
+        {levels.map((item, index) => {
+          const isCompleted = save.completed.includes(item.id);
+          const lastPlayed = save.lastPlayed[item.id];
+          return (
+            <button
+              className={`level-card ${isCompleted ? "completed" : ""}`}
+              key={item.id}
+              onClick={() => onSelectLevel(item.id)}
+            >
+              <div className="card-header">
+                <span className="level-index">{String(index + 1).padStart(2, "0")}</span>
+                {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+              </div>
+              <h3 className="level-name">{item.name}</h3>
+              <div className="level-meta">
+                <span className="meta-item">
+                  <i className="meta-icon board-icon" />
+                  {item.size}×{item.size} 棋盘
+                </span>
+                <span className="meta-item">
+                  <i className="meta-icon piece-icon" />
+                  {item.pieces.length} 个碎片
+                </span>
+              </div>
+              <div className="level-footer">
+                <span className="last-played">
+                  <i className="meta-icon clock-icon" />
+                  {formatLastPlayed(lastPlayed)}
+                </span>
+                <span className="enter-arrow">开始 →</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [save, setSave] = useState<Save>(loadSave);
   const [activePiece, setActivePiece] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
+  const [view, setView] = useState<View>("hall");
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
 
   useEffect(() => {
@@ -169,9 +257,29 @@ export default function App() {
   }
 
   function switchLevel(levelId: string) {
-    setSave((current) => ({ ...current, levelId, placements: [] }));
+    setSave((current) => ({
+      ...current,
+      levelId,
+      placements: [],
+      lastPlayed: { ...current.lastPlayed, [levelId]: new Date().toISOString() }
+    }));
     setActivePiece(null);
     setRotation(0);
+    setView("game");
+  }
+
+  function backToHall() {
+    setView("hall");
+    setActivePiece(null);
+    setRotation(0);
+  }
+
+  if (view === "hall") {
+    return (
+      <main className="runes">
+        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} />
+      </main>
+    );
   }
 
   return (
@@ -181,12 +289,9 @@ export default function App() {
           <p className="eyebrow">符文拼接室</p>
           <h1>把碎片压进发光的格子</h1>
         </div>
-        <div className="level-tabs">
-          {levels.map((item) => (
-            <button className={item.id === level.id ? "active" : ""} key={item.id} onClick={() => switchLevel(item.id)}>
-              {item.name}{save.completed.includes(item.id) ? " ✓" : ""}
-            </button>
-          ))}
+        <div className="game-header">
+          <span className="current-level">当前：{level.name}</span>
+          <button className="back-btn" onClick={backToHall}>← 返回关卡大厅</button>
         </div>
       </section>
 
