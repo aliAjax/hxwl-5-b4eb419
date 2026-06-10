@@ -33,6 +33,192 @@ type Save = {
 
 const storageKey = "hxwl-5-runes";
 const tutorialKey = "hxwl-5-runes-tutorial";
+const settingsKey = "hxwl-5-runes-settings";
+
+type Settings = {
+  soundEnabled: boolean;
+  animationIntensity: number;
+  theme: "dark" | "light";
+  highlightTarget: boolean;
+};
+
+const defaultSettings: Settings = {
+  soundEnabled: true,
+  animationIntensity: 100,
+  theme: "dark",
+  highlightTarget: true
+};
+
+function loadSettings(): Settings {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(settingsKey) || "") as Partial<Settings>;
+    return { ...defaultSettings, ...parsed };
+  } catch {
+    return { ...defaultSettings };
+  }
+}
+
+type SoundType = "place" | "rotate" | "select" | "success" | "reset";
+
+function createSoundPlayer() {
+  let ctx: AudioContext | null = null;
+  function ensureCtx(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    if (!ctx) {
+      try {
+        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        ctx = new AC();
+      } catch {
+        return null;
+      }
+    }
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+    return ctx;
+  }
+  function playTone(freq: number, duration: number, type: OscillatorType = "sine", volume = 0.15) {
+    const context = ensureCtx();
+    if (!context) return;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, context.currentTime);
+    gain.gain.setValueAtTime(volume, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(context.destination);
+    osc.start();
+    osc.stop(context.currentTime + duration);
+  }
+  function play(kind: SoundType) {
+    switch (kind) {
+      case "place":
+        playTone(520, 0.12, "triangle", 0.18);
+        setTimeout(() => playTone(780, 0.08, "triangle", 0.12), 40);
+        break;
+      case "rotate":
+        playTone(440, 0.07, "square", 0.1);
+        break;
+      case "select":
+        playTone(620, 0.08, "sine", 0.12);
+        break;
+      case "success":
+        [0, 120, 240, 380].forEach((delay, i) => {
+          setTimeout(() => playTone([523, 659, 784, 1046][i], 0.22, "triangle", 0.18), delay);
+        });
+        break;
+      case "reset":
+        playTone(300, 0.1, "sawtooth", 0.1);
+        setTimeout(() => playTone(200, 0.12, "sawtooth", 0.08), 60);
+        break;
+    }
+  }
+  return { play, ensureCtx };
+}
+
+const sound = createSoundPlayer();
+
+function SettingsPanel({
+  open,
+  settings,
+  onClose,
+  onChange
+}: {
+  open: boolean;
+  settings: Settings;
+  onClose: () => void;
+  onChange: (next: Settings) => void;
+}) {
+  if (!open) return null;
+  const setPartial = (patch: Partial<Settings>) => onChange({ ...settings, ...patch });
+
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-header">
+          <h2 className="settings-title">游戏设置</h2>
+          <button className="settings-close" onClick={onClose} aria-label="关闭设置">
+            ×
+          </button>
+        </div>
+        <div className="settings-group">
+          <div className="settings-item">
+            <label className="settings-label">
+              音效
+              <span className="settings-desc">放置、旋转、完成等操作声音</span>
+            </label>
+            <button
+              className={`switch ${settings.soundEnabled ? "on" : ""}`}
+              onClick={() => setPartial({ soundEnabled: !settings.soundEnabled })}
+              role="switch"
+              aria-checked={settings.soundEnabled}
+              aria-label="音效开关"
+            />
+          </div>
+
+          <div className="settings-item">
+            <label className="settings-label">
+              主题
+              <span className="settings-desc">深色符文风格或浅色纸页风格</span>
+            </label>
+            <div className="theme-picker">
+              {(["dark", "light"] as const).map((theme) => (
+                <button
+                  key={theme}
+                  className={`theme-pick ${settings.theme === theme ? "active" : ""}`}
+                  onClick={() => setPartial({ theme })}
+                  data-theme={theme}
+                  aria-label={`切换到${theme === "dark" ? "深色" : "浅色"}主题`}
+                  title={theme === "dark" ? "深色符文" : "浅色纸页"}
+                >
+                  <span className="swatch" />
+                  <span className="swatch" />
+                  <span className="swatch" />
+                  <span className="swatch" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-item">
+            <label className="settings-label">
+              动效强度
+              <span className="settings-desc">棋盘及碎片动画的强度与速度</span>
+            </label>
+            <div className="slider-wrap">
+              <input
+                className="slider"
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={settings.animationIntensity}
+                onChange={(e) => setPartial({ animationIntensity: Number(e.target.value) })}
+                aria-label="动效强度"
+              />
+              <span className="slider-value">{settings.animationIntensity}%</span>
+            </div>
+          </div>
+
+          <div className="settings-item">
+            <label className="settings-label">
+              目标格高亮
+              <span className="settings-desc">发光边框提示需要填充的位置</span>
+            </label>
+            <button
+              className={`switch ${settings.highlightTarget ? "on" : ""}`}
+              onClick={() => setPartial({ highlightTarget: !settings.highlightTarget })}
+              role="switch"
+              aria-checked={settings.highlightTarget}
+              aria-label="目标格高亮开关"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type TutorialStep = {
   id: string;
@@ -350,12 +536,14 @@ function LevelSelectHall({
   levels,
   save,
   onSelectLevel,
-  onOpenTutorial
+  onOpenTutorial,
+  onOpenSettings
 }: {
   levels: Level[];
   save: Save;
   onSelectLevel: (levelId: string) => void;
   onOpenTutorial: () => void;
+  onOpenSettings: () => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length;
@@ -368,6 +556,9 @@ function LevelSelectHall({
           <h1>选择关卡</h1>
         </div>
         <div className="hall-actions">
+          <button className="settings-btn" onClick={onOpenSettings}>
+            ⚙ 设置
+          </button>
           <button className="tutorial-entry-btn" onClick={onOpenTutorial}>
             查看教程
           </button>
@@ -427,12 +618,15 @@ function loadTutorialCompleted(): boolean {
 
 export default function App() {
   const [save, setSave] = useState<Save>(loadSave);
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [activePiece, setActivePiece] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const [view, setView] = useState<View>("hall");
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
+  const prevSolvedRef = useRef(false);
 
   const tutorialRefs: TutorialRefs = {
     pieces: useRef<HTMLDivElement>(null),
@@ -447,6 +641,20 @@ export default function App() {
   }, [save]);
 
   useEffect(() => {
+    localStorage.setItem(settingsKey, JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme;
+    const intensity = Math.max(0, Math.min(100, settings.animationIntensity));
+    const durationScale = 0.2 + (1.8 * (100 - intensity)) / 100;
+    const opacity = 0.15 + (0.85 * intensity) / 100;
+    root.style.setProperty("--anim-duration-scale", String(durationScale.toFixed(3)));
+    root.style.setProperty("--anim-opacity", String(opacity.toFixed(3)));
+  }, [settings.theme, settings.animationIntensity]);
+
+  useEffect(() => {
     if (!loadTutorialCompleted() && view === "game" && !showTutorial) {
       const timer = setTimeout(() => {
         setShowTutorial(true);
@@ -455,6 +663,20 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [view, showTutorial]);
+
+  const playSound = (kind: SoundType) => {
+    if (settings.soundEnabled) {
+      sound.ensureCtx();
+      sound.play(kind);
+    }
+  };
+
+  useEffect(() => {
+    if (solved && !prevSolvedRef.current) {
+      playSound("success");
+    }
+    prevSolvedRef.current = solved;
+  }, [solved, settings.soundEnabled]);
 
   function completeTutorial() {
     localStorage.setItem(tutorialKey, "1");
@@ -520,6 +742,7 @@ export default function App() {
     const collision = cells.some(([r, c]) => occupied.has(cellKey(r, c)));
     if (out || collision) return;
     setSave((current) => ({ ...current, placements: [...current.placements, { pieceId: activePiece, row, col, rotation }] }));
+    playSound("place");
     setActivePiece(null);
     setRotation(0);
   }
@@ -542,13 +765,31 @@ export default function App() {
     setRotation(0);
   }
 
+  function handleSetActivePiece(id: string) {
+    setActivePiece(id);
+    playSound("select");
+  }
+
+  function handleRotate() {
+    setRotation((value) => (value + 1) % 4);
+    playSound("rotate");
+  }
+
+  function handleReset() {
+    setSave((current) => ({ ...current, placements: [] }));
+    playSound("reset");
+  }
+
   if (view === "hall") {
     return (
       <main className="runes">
-        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} />
+        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} onOpenSettings={() => setSettingsOpen(true)} />
+        <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
       </main>
     );
   }
+
+  const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
 
   return (
     <main className="runes">
@@ -559,6 +800,9 @@ export default function App() {
         </div>
         <div className="game-header">
           <span className="current-level">当前：{level.name}</span>
+          <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
+            ⚙ 设置
+          </button>
           <button className="tutorial-reopen-btn" onClick={openTutorial}>
             教程
           </button>
@@ -574,9 +818,11 @@ export default function App() {
               const row = Math.floor(index / level.size);
               const col = index % level.size;
               const key = cellKey(row, col);
+              const isTarget = targetSet.has(key);
+              const targetClass = isTarget ? `target${settings.highlightTarget ? "" : " no-highlight"}` : "";
               return (
                 <button
-                  className={level.target.some(([r, c]) => r === row && c === col) ? "target" : ""}
+                  className={targetClass}
                   key={key}
                   onClick={() => place(row, col)}
                 >
@@ -591,14 +837,14 @@ export default function App() {
         <aside className="panel">
           <div className="piece-head">
             <h2>碎片</h2>
-            <button ref={tutorialRefs.reset} onClick={() => setSave((current) => ({ ...current, placements: [] }))}>重置</button>
+            <button ref={tutorialRefs.reset} onClick={handleReset}>重置</button>
           </div>
-          <button ref={tutorialRefs.rotate} className="rotate" onClick={() => setRotation((value) => (value + 1) % 4)}>
+          <button ref={tutorialRefs.rotate} className="rotate" onClick={handleRotate}>
             旋转选中碎片
           </button>
           <div ref={tutorialRefs.pieces} className="pieces">
             {level.pieces.map((piece) => (
-              <button className={activePiece === piece.id ? "active" : ""} key={piece.id} onClick={() => setActivePiece(piece.id)}>
+              <button className={activePiece === piece.id ? "active" : ""} key={piece.id} onClick={() => handleSetActivePiece(piece.id)}>
                 <span style={{ background: piece.color }} />
                 <strong>{piece.name}</strong>
               </button>
@@ -618,6 +864,8 @@ export default function App() {
           onSkip={completeTutorial}
         />
       )}
+
+      <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
     </main>
   );
 }
