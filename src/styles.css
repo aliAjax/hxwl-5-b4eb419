@@ -1667,3 +1667,52 @@ h1 {
     max-height: 50vh;
   }
 }
+
+.undo-redo-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.undo-btn,
+.redo-btn {
+  padding: 11px 13px;
+  background: var(--color-bg-button);
+  color: var(--color-fg);
+  font-weight: 800;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background calc(0.15s * var(--anim-duration-scale)) ease,
+    opacity calc(0.15s * var(--anim-duration-scale)) ease,
+    transform calc(0.12s * var(--anim-duration-scale)) ease;
+}
+
+.undo-btn:hover:not(:disabled),
+.redo-btn:hover:not(:disabled) {
+  background: var(--color-bg-button-hover);
+  transform: translateY(calc(-1px * var(--anim-opacity)));
+}
+
+.undo-btn:active:not(:disabled),
+.redo-btn:active:not(:disabled) {
+  transform: scale(calc(0.97 + 0.03 * (1 - var(--anim-opacity))));
+}
+
+.undo-btn:disabled,
+.redo-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.undo-btn {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.redo-btn {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}

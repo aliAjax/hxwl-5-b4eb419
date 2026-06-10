@@ -24,11 +24,21 @@ type Placement = {
   rotation: number;
 };
 
+type HistoryState = {
+  placements: Placement[];
+  activePiece: string | null;
+  rotation: number;
+  stats: Stats;
+  showComplete: boolean;
+};
+
 type Save = {
   levelId: string;
   placements: Placement[];
   completed: string[];
   lastPlayed: Record<string, string>;
+  undoStack?: HistoryState[];
+  redoStack?: HistoryState[];
 };
 
 const storageKey = "hxwl-5-runes";
@@ -417,9 +427,15 @@ function loadSave(): Save {
     if (!parsed.lastPlayed) {
       parsed.lastPlayed = {};
     }
+    if (!parsed.undoStack) {
+      parsed.undoStack = [];
+    }
+    if (!parsed.redoStack) {
+      parsed.redoStack = [];
+    }
     return parsed;
   } catch {
-    return { levelId: levels[0].id, placements: [], completed: [], lastPlayed: {} };
+    return { levelId: levels[0].id, placements: [], completed: [], lastPlayed: {}, undoStack: [], redoStack: [] };
   }
 }
 
@@ -935,6 +951,9 @@ export default function App() {
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
   const prevSolvedRef = useRef(false);
   const hasInteractionRef = useRef(false);
+  const undoStackRef = useRef<HistoryState[]>(save.undoStack || []);
+  const redoStackRef = useRef<HistoryState[]>(save.redoStack || []);
+  const isPerformingUndoRedoRef = useRef(false);
 
   const tutorialRefs: TutorialRefs = {
     pieces: useRef<HTMLDivElement>(null),
@@ -978,6 +997,121 @@ export default function App() {
       sound.play(kind);
     }
   };
+
+  function persistHistory() {
+    setSave((current) => ({
+      ...current,
+      undoStack: undoStackRef.current,
+      redoStack: redoStackRef.current
+    }));
+  }
+
+  function captureState() {
+    if (isPerformingUndoRedoRef.current) return;
+    const state: HistoryState = {
+      placements: [...save.placements],
+      activePiece,
+      rotation,
+      stats: { ...stats },
+      showComplete
+    };
+    undoStackRef.current.push(state);
+    redoStackRef.current = [];
+    persistHistory();
+  }
+
+  function clearRedoStack() {
+    redoStackRef.current = [];
+    persistHistory();
+  }
+
+  function canUndo() {
+    return undoStackRef.current.length > 0;
+  }
+
+  function canRedo() {
+    return redoStackRef.current.length > 0;
+  }
+
+  function undo() {
+    if (!canUndo()) return;
+    isPerformingUndoRedoRef.current = true;
+    const prevState = undoStackRef.current.pop()!;
+    const currentState: HistoryState = {
+      placements: [...save.placements],
+      activePiece,
+      rotation,
+      stats: { ...stats },
+      showComplete
+    };
+    redoStackRef.current.push(currentState);
+
+    setSave((current) => ({ ...current, placements: prevState.placements }));
+    setActivePiece(prevState.activePiece);
+    setRotation(prevState.rotation);
+    setStats(prevState.stats);
+    setShowComplete(prevState.showComplete);
+    if (prevState.showComplete) {
+      prevSolvedRef.current = true;
+    }
+    playSound("select");
+    persistHistory();
+    setTimeout(() => {
+      isPerformingUndoRedoRef.current = false;
+    }, 0);
+  }
+
+  function redo() {
+    if (!canRedo()) return;
+    isPerformingUndoRedoRef.current = true;
+    const nextState = redoStackRef.current.pop()!;
+    const currentState: HistoryState = {
+      placements: [...save.placements],
+      activePiece,
+      rotation,
+      stats: { ...stats },
+      showComplete
+    };
+    undoStackRef.current.push(currentState);
+
+    setSave((current) => ({ ...current, placements: nextState.placements }));
+    setActivePiece(nextState.activePiece);
+    setRotation(nextState.rotation);
+    setStats(nextState.stats);
+    setShowComplete(nextState.showComplete);
+    if (nextState.showComplete) {
+      prevSolvedRef.current = true;
+    }
+    playSound("select");
+    persistHistory();
+    setTimeout(() => {
+      isPerformingUndoRedoRef.current = false;
+    }, 0);
+  }
+
+  function resetHistory() {
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    persistHistory();
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (view !== "game") return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const modKey = isMac ? e.metaKey : e.ctrlKey;
+      if (modKey && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if ((modKey && e.shiftKey && e.key.toLowerCase() === "z") || (modKey && e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view]);
 
   function completeTutorial() {
     localStorage.setItem(tutorialKey, "1");
@@ -1052,6 +1186,7 @@ export default function App() {
     const out = cells.some(([r, c]) => r < 0 || c < 0 || r >= level.size || c >= level.size);
     const collision = cells.some(([r, c]) => occupied.has(cellKey(r, c)));
     if (out || collision) return;
+    captureState();
     hasInteractionRef.current = true;
     setSave((current) => ({ ...current, placements: [...current.placements, { pieceId: activePiece, row, col, rotation }] }));
     setStats((s) => ({ ...s, steps: s.steps + 1 }));
@@ -1063,6 +1198,7 @@ export default function App() {
   function switchLevel(levelId: string) {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
+    resetHistory();
     setSave((current) => ({
       ...current,
       levelId,
@@ -1080,6 +1216,7 @@ export default function App() {
   function backToHall() {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
+    resetHistory();
     setView("hall");
     setActivePiece(null);
     setRotation(0);
@@ -1088,11 +1225,16 @@ export default function App() {
   }
 
   function handleSetActivePiece(id: string) {
+    if (activePiece !== id) {
+      captureState();
+    }
     setActivePiece(id);
     playSound("select");
   }
 
   function handleRotate() {
+    if (!activePiece) return;
+    captureState();
     setRotation((value) => (value + 1) % 4);
     hasInteractionRef.current = true;
     setStats((s) => ({ ...s, rotations: s.rotations + 1 }));
@@ -1100,6 +1242,8 @@ export default function App() {
   }
 
   function handleReset() {
+    if (save.placements.length === 0) return;
+    captureState();
     hasInteractionRef.current = true;
     setSave((current) => ({ ...current, placements: [] }));
     setStats((s) => ({ ...s, resets: s.resets + 1 }));
@@ -1266,6 +1410,14 @@ export default function App() {
           <button ref={tutorialRefs.rotate} className="rotate" onClick={handleRotate}>
             旋转选中碎片
           </button>
+          <div className="undo-redo-group">
+            <button className="undo-btn" onClick={undo} disabled={!canUndo()}>
+              ↶ 撤销
+            </button>
+            <button className="redo-btn" onClick={redo} disabled={!canRedo()}>
+              ↷ 重做
+            </button>
+          </div>
           <div ref={tutorialRefs.pieces} className="pieces">
             {level.pieces.map((piece) => (
               <button className={activePiece === piece.id ? "active" : ""} key={piece.id} onClick={() => handleSetActivePiece(piece.id)}>
