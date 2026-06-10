@@ -248,41 +248,41 @@ function TutorialOverlay({
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
   const tooltipWidth = viewportW < 560 ? viewportW - 32 : 320;
-  const tooltipHeight = 220;
   const gap = 16;
   const margin = 12;
+  const tooltipHeight = Math.min(220, viewportH - margin * 2);
 
   const isSingleColumn = viewportW < 900;
 
   function computePosition(pos: TutorialStep["position"], r: DOMRect): { style: React.CSSProperties; visible: boolean } {
     let style: React.CSSProperties = {};
-    let visible = true;
+    let top = 0;
+    let left = 0;
 
     if (pos === "top") {
-      let left = r.left + r.width / 2 - tooltipWidth / 2;
+      left = r.left + r.width / 2 - tooltipWidth / 2;
       left = Math.max(margin, Math.min(left, viewportW - tooltipWidth - margin));
-      const top = r.top - gap - tooltipHeight;
-      style = { top, left };
-      if (top < margin) visible = false;
+      top = r.top - gap - tooltipHeight;
     } else if (pos === "bottom") {
-      let left = r.left + r.width / 2 - tooltipWidth / 2;
+      left = r.left + r.width / 2 - tooltipWidth / 2;
       left = Math.max(margin, Math.min(left, viewportW - tooltipWidth - margin));
-      const top = r.bottom + gap;
-      style = { top, left };
-      if (top + tooltipHeight > viewportH - margin) visible = false;
+      top = r.bottom + gap;
     } else if (pos === "left") {
-      let top = r.top + r.height / 2 - tooltipHeight / 2;
+      top = r.top + r.height / 2 - tooltipHeight / 2;
       top = Math.max(margin, Math.min(top, viewportH - tooltipHeight - margin));
-      const left = r.left - gap - tooltipWidth;
-      style = { top, left };
-      if (left < margin) visible = false;
+      left = r.left - gap - tooltipWidth;
     } else if (pos === "right") {
-      let top = r.top + r.height / 2 - tooltipHeight / 2;
+      top = r.top + r.height / 2 - tooltipHeight / 2;
       top = Math.max(margin, Math.min(top, viewportH - tooltipHeight - margin));
-      const left = r.right + gap;
-      style = { top, left };
-      if (left + tooltipWidth > viewportW - margin) visible = false;
+      left = r.right + gap;
     }
+
+    style = { top, left };
+    const visible =
+      top >= margin &&
+      left >= margin &&
+      top + tooltipHeight <= viewportH - margin &&
+      left + tooltipWidth <= viewportW - margin;
 
     return { style, visible };
   }
@@ -309,6 +309,12 @@ function TutorialOverlay({
     }
     tooltipStyle = result.style;
   }
+
+  tooltipStyle = {
+    ...tooltipStyle,
+    top: Math.max(margin, Math.min(Number(tooltipStyle.top ?? margin), viewportH - tooltipHeight - margin)),
+    left: Math.max(margin, Math.min(Number(tooltipStyle.left ?? margin), viewportW - tooltipWidth - margin))
+  };
 
   return (
     <div className="tutorial-overlay">
