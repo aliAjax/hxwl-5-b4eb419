@@ -377,6 +377,12 @@ function formatLastPlayed(isoString?: string): string {
   return date.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
 }
 
+type Stats = {
+  steps: number;
+  rotations: number;
+  resets: number;
+};
+
 type View = "hall" | "game";
 
 type TutorialRefs = {
@@ -532,6 +538,59 @@ function TutorialOverlay({
   );
 }
 
+function CompleteModal({
+  open,
+  levelName,
+  stats,
+  hasNext,
+  onClose,
+  onNext,
+  onBackToHall
+}: {
+  open: boolean;
+  levelName: string;
+  stats: Stats;
+  hasNext: boolean;
+  onClose: () => void;
+  onNext: () => void;
+  onBackToHall: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="complete-overlay" onClick={onClose}>
+      <div className="complete-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="complete-header">
+          <div className="complete-icon">✦</div>
+          <h2 className="complete-title">符文已闭合</h2>
+          <p className="complete-level">{levelName}</p>
+        </div>
+        <div className="complete-stats">
+          <div className="stat-item">
+            <span className="stat-label">使用步数</span>
+            <span className="stat-value">{stats.steps}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">旋转次数</span>
+            <span className="stat-value">{stats.rotations}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">重置次数</span>
+            <span className="stat-value">{stats.resets}</span>
+          </div>
+        </div>
+        <div className="complete-actions">
+          <button className="complete-btn secondary" onClick={onBackToHall}>
+            返回关卡大厅
+          </button>
+          <button className="complete-btn primary" onClick={onNext}>
+            {hasNext ? "下一关 →" : "完成全部关卡"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LevelSelectHall({
   levels,
   save,
@@ -625,6 +684,8 @@ export default function App() {
   const [view, setView] = useState<View>("hall");
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [stats, setStats] = useState<Stats>({ steps: 0, rotations: 0, resets: 0 });
+  const [showComplete, setShowComplete] = useState(false);
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
   const prevSolvedRef = useRef(false);
 
@@ -733,6 +794,12 @@ export default function App() {
     }
   }, [level.id, save.completed, solved]);
 
+  useEffect(() => {
+    if (solved && !prevSolvedRef.current) {
+      setShowComplete(true);
+    }
+  }, [solved]);
+
   function place(row: number, col: number) {
     if (!activePiece) return;
     const piece = level.pieces.find((item) => item.id === activePiece);
@@ -742,6 +809,7 @@ export default function App() {
     const collision = cells.some(([r, c]) => occupied.has(cellKey(r, c)));
     if (out || collision) return;
     setSave((current) => ({ ...current, placements: [...current.placements, { pieceId: activePiece, row, col, rotation }] }));
+    setStats((s) => ({ ...s, steps: s.steps + 1 }));
     playSound("place");
     setActivePiece(null);
     setRotation(0);
@@ -756,6 +824,8 @@ export default function App() {
     }));
     setActivePiece(null);
     setRotation(0);
+    setStats({ steps: 0, rotations: 0, resets: 0 });
+    setShowComplete(false);
     setView("game");
   }
 
@@ -763,6 +833,7 @@ export default function App() {
     setView("hall");
     setActivePiece(null);
     setRotation(0);
+    setShowComplete(false);
   }
 
   function handleSetActivePiece(id: string) {
@@ -772,12 +843,25 @@ export default function App() {
 
   function handleRotate() {
     setRotation((value) => (value + 1) % 4);
+    setStats((s) => ({ ...s, rotations: s.rotations + 1 }));
     playSound("rotate");
   }
 
   function handleReset() {
     setSave((current) => ({ ...current, placements: [] }));
+    setStats((s) => ({ ...s, resets: s.resets + 1 }));
     playSound("reset");
+  }
+
+  function nextLevel() {
+    const currentIndex = levels.findIndex((item) => item.id === level.id);
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < levels.length) {
+      switchLevel(levels[nextIndex].id);
+    } else {
+      setShowComplete(false);
+      backToHall();
+    }
   }
 
   if (view === "hall") {
@@ -790,6 +874,8 @@ export default function App() {
   }
 
   const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
+  const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
+  const hasNextLevel = currentLevelIndex < levels.length - 1;
 
   return (
     <main className="runes">
@@ -864,6 +950,16 @@ export default function App() {
           onSkip={completeTutorial}
         />
       )}
+
+      <CompleteModal
+        open={showComplete}
+        levelName={level.name}
+        stats={stats}
+        hasNext={hasNextLevel}
+        onClose={() => setShowComplete(false)}
+        onNext={nextLevel}
+        onBackToHall={backToHall}
+      />
 
       <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
     </main>
