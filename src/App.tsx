@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Cell = [number, number];
 
@@ -32,6 +32,53 @@ type Save = {
 };
 
 const storageKey = "hxwl-5-runes";
+const tutorialKey = "hxwl-5-runes-tutorial";
+
+type TutorialStep = {
+  id: string;
+  title: string;
+  description: string;
+  target: string;
+  position: "top" | "bottom" | "left" | "right";
+};
+
+const tutorialSteps: TutorialStep[] = [
+  {
+    id: "select",
+    title: "第一步：选择碎片",
+    description: "在右侧碎片列表中点击任意一个符文碎片来选中它。选中的碎片会显示金色边框。",
+    target: "pieces",
+    position: "left"
+  },
+  {
+    id: "rotate",
+    title: "第二步：旋转碎片",
+    description: "选中碎片后，点击「旋转选中碎片」按钮可以让碎片顺时针旋转 90°，直到找到合适的方向。",
+    target: "rotate",
+    position: "bottom"
+  },
+  {
+    id: "place",
+    title: "第三步：放置碎片",
+    description: "选中并旋转好碎片后，点击左侧棋盘上发光的目标格子，碎片会被放置到对应位置。",
+    target: "board",
+    position: "right"
+  },
+  {
+    id: "reset",
+    title: "第四步：重置棋盘",
+    description: "如果放错了或者想重来，点击碎片面板顶部的「重置」按钮可以清空棋盘上所有已放置的碎片。",
+    target: "reset",
+    position: "bottom"
+  },
+  {
+    id: "complete",
+    title: "第五步：完成判定",
+    description: "当所有发光的目标格子都恰好被碎片填满（不多不少），符文闭合，关卡即完成！",
+    target: "hint",
+    position: "top"
+  }
+];
 
 const levels: Level[] = [
   {
@@ -146,14 +193,132 @@ function formatLastPlayed(isoString?: string): string {
 
 type View = "hall" | "game";
 
+type TutorialRefs = {
+  pieces: React.RefObject<HTMLDivElement | null>;
+  rotate: React.RefObject<HTMLButtonElement | null>;
+  board: React.RefObject<HTMLDivElement | null>;
+  reset: React.RefObject<HTMLButtonElement | null>;
+  hint: React.RefObject<HTMLParagraphElement | null>;
+};
+
+function TutorialOverlay({
+  step,
+  stepIndex,
+  totalSteps,
+  targetRef,
+  onNext,
+  onPrev,
+  onSkip
+}: {
+  step: TutorialStep;
+  stepIndex: number;
+  totalSteps: number;
+  targetRef: React.RefObject<HTMLElement | null>;
+  onNext: () => void;
+  onPrev: () => void;
+  onSkip: () => void;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    function updateRect() {
+      if (targetRef.current) {
+        setRect(targetRef.current.getBoundingClientRect());
+      }
+    }
+    updateRect();
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect);
+    return () => {
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect);
+    };
+  }, [targetRef, step]);
+
+  if (!rect) return null;
+
+  const padding = 8;
+  const highlightStyle: React.CSSProperties = {
+    top: rect.top - padding,
+    left: rect.left - padding,
+    width: rect.width + padding * 2,
+    height: rect.height + padding * 2
+  };
+
+  let tooltipStyle: React.CSSProperties = {};
+  const tooltipWidth = 320;
+  const gap = 16;
+
+  switch (step.position) {
+    case "top":
+      tooltipStyle = {
+        top: rect.top - gap,
+        left: rect.left + rect.width / 2 - tooltipWidth / 2,
+        transform: "translateY(-100%)"
+      };
+      break;
+    case "bottom":
+      tooltipStyle = {
+        top: rect.bottom + gap,
+        left: rect.left + rect.width / 2 - tooltipWidth / 2
+      };
+      break;
+    case "left":
+      tooltipStyle = {
+        top: rect.top + rect.height / 2,
+        left: rect.left - gap - tooltipWidth,
+        transform: "translateY(-50%)"
+      };
+      break;
+    case "right":
+      tooltipStyle = {
+        top: rect.top + rect.height / 2,
+        left: rect.right + gap,
+        transform: "translateY(-50%)"
+      };
+      break;
+  }
+
+  return (
+    <div className="tutorial-overlay">
+      <div className="tutorial-mask" />
+      <div className="tutorial-highlight" style={highlightStyle} />
+      <div className="tutorial-tooltip" style={tooltipStyle}>
+        <div className="tutorial-progress">
+          {stepIndex + 1} / {totalSteps}
+        </div>
+        <h3 className="tutorial-title">{step.title}</h3>
+        <p className="tutorial-description">{step.description}</p>
+        <div className="tutorial-actions">
+          <button className="tutorial-skip" onClick={onSkip}>
+            跳过教程
+          </button>
+          <div className="tutorial-nav">
+            {stepIndex > 0 && (
+              <button className="tutorial-prev" onClick={onPrev}>
+                上一步
+              </button>
+            )}
+            <button className="tutorial-next" onClick={onNext}>
+              {stepIndex === totalSteps - 1 ? "开始游戏" : "下一步"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LevelSelectHall({
   levels,
   save,
-  onSelectLevel
+  onSelectLevel,
+  onOpenTutorial
 }: {
   levels: Level[];
   save: Save;
   onSelectLevel: (levelId: string) => void;
+  onOpenTutorial: () => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length;
@@ -165,9 +330,14 @@ function LevelSelectHall({
           <p className="eyebrow">符文拼接室</p>
           <h1>选择关卡</h1>
         </div>
-        <div className="progress-badge">
-          <strong>{completedCount}</strong>
-          <span>/ {totalCount} 已完成</span>
+        <div className="hall-actions">
+          <button className="tutorial-entry-btn" onClick={onOpenTutorial}>
+            查看教程
+          </button>
+          <div className="progress-badge">
+            <strong>{completedCount}</strong>
+            <span>/ {totalCount} 已完成</span>
+          </div>
         </div>
       </div>
       <div className="level-cards">
@@ -210,16 +380,77 @@ function LevelSelectHall({
   );
 }
 
+function loadTutorialCompleted(): boolean {
+  try {
+    return localStorage.getItem(tutorialKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const [save, setSave] = useState<Save>(loadSave);
   const [activePiece, setActivePiece] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const [view, setView] = useState<View>("hall");
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
+
+  const tutorialRefs: TutorialRefs = {
+    pieces: useRef<HTMLDivElement>(null),
+    rotate: useRef<HTMLButtonElement>(null),
+    board: useRef<HTMLDivElement>(null),
+    reset: useRef<HTMLButtonElement>(null),
+    hint: useRef<HTMLParagraphElement>(null)
+  };
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(save));
   }, [save]);
+
+  useEffect(() => {
+    if (!loadTutorialCompleted() && view === "game" && !showTutorial) {
+      const timer = setTimeout(() => {
+        setShowTutorial(true);
+        setTutorialStep(0);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [view, showTutorial]);
+
+  function completeTutorial() {
+    localStorage.setItem(tutorialKey, "1");
+    setShowTutorial(false);
+    setTutorialStep(0);
+  }
+
+  function handleTutorialNext() {
+    if (tutorialStep < tutorialSteps.length - 1) {
+      setTutorialStep(tutorialStep + 1);
+    } else {
+      completeTutorial();
+    }
+  }
+
+  function handleTutorialPrev() {
+    if (tutorialStep > 0) {
+      setTutorialStep(tutorialStep - 1);
+    }
+  }
+
+  function openTutorial() {
+    if (view !== "game") {
+      switchLevel(levels[0].id);
+    }
+    setTimeout(() => {
+      setShowTutorial(true);
+      setTutorialStep(0);
+    }, 100);
+  }
+
+  const currentStep = tutorialSteps[tutorialStep];
+  const currentTutorialRef = tutorialRefs[currentStep?.target as keyof TutorialRefs] as React.RefObject<HTMLElement> | undefined;
 
   const occupied = useMemo(() => {
     const map = new Map<string, string>();
@@ -277,7 +508,7 @@ export default function App() {
   if (view === "hall") {
     return (
       <main className="runes">
-        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} />
+        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} />
       </main>
     );
   }
@@ -291,6 +522,9 @@ export default function App() {
         </div>
         <div className="game-header">
           <span className="current-level">当前：{level.name}</span>
+          <button className="tutorial-reopen-btn" onClick={openTutorial}>
+            教程
+          </button>
           <button className="back-btn" onClick={backToHall}>← 返回关卡大厅</button>
         </div>
       </section>
@@ -298,7 +532,7 @@ export default function App() {
       <section className="game">
         <div className="panel">
           <h2>目标</h2>
-          <div className="board" style={{ gridTemplateColumns: `repeat(${level.size}, 1fr)` }}>
+          <div ref={tutorialRefs.board} className="board" style={{ gridTemplateColumns: `repeat(${level.size}, 1fr)` }}>
             {Array.from({ length: level.size * level.size }).map((_, index) => {
               const row = Math.floor(index / level.size);
               const col = index % level.size;
@@ -314,18 +548,18 @@ export default function App() {
               );
             })}
           </div>
-          <p className={solved ? "hint solved" : "hint"}>{solved ? "符文已闭合，关卡完成。" : "选择碎片后点击棋盘放置，已放下的碎片可用重置清空。"}</p>
+          <p ref={tutorialRefs.hint} className={solved ? "hint solved" : "hint"}>{solved ? "符文已闭合，关卡完成。" : "选择碎片后点击棋盘放置，已放下的碎片可用重置清空。"}</p>
         </div>
 
         <aside className="panel">
           <div className="piece-head">
             <h2>碎片</h2>
-            <button onClick={() => setSave((current) => ({ ...current, placements: [] }))}>重置</button>
+            <button ref={tutorialRefs.reset} onClick={() => setSave((current) => ({ ...current, placements: [] }))}>重置</button>
           </div>
-          <button className="rotate" onClick={() => setRotation((value) => (value + 1) % 4)}>
+          <button ref={tutorialRefs.rotate} className="rotate" onClick={() => setRotation((value) => (value + 1) % 4)}>
             旋转选中碎片
           </button>
-          <div className="pieces">
+          <div ref={tutorialRefs.pieces} className="pieces">
             {level.pieces.map((piece) => (
               <button className={activePiece === piece.id ? "active" : ""} key={piece.id} onClick={() => setActivePiece(piece.id)}>
                 <span style={{ background: piece.color }} />
@@ -335,6 +569,18 @@ export default function App() {
           </div>
         </aside>
       </section>
+
+      {showTutorial && currentStep && currentTutorialRef && (
+        <TutorialOverlay
+          step={currentStep}
+          stepIndex={tutorialStep}
+          totalSteps={tutorialSteps.length}
+          targetRef={currentTutorialRef}
+          onNext={handleTutorialNext}
+          onPrev={handleTutorialPrev}
+          onSkip={completeTutorial}
+        />
+      )}
     </main>
   );
 }
