@@ -34,6 +34,72 @@ type Save = {
 const storageKey = "hxwl-5-runes";
 const tutorialKey = "hxwl-5-runes-tutorial";
 const settingsKey = "hxwl-5-runes-settings";
+const achievementKey = "hxwl-5-runes-achievements";
+
+type LevelRecord = {
+  firstCompletedAt: string;
+  minSteps: number;
+  minRotations: number;
+  noResetCompleted: boolean;
+};
+
+type Achievements = Record<string, LevelRecord>;
+
+function loadAchievements(): Achievements {
+  try {
+    return JSON.parse(localStorage.getItem(achievementKey) || "{}") as Achievements;
+  } catch {
+    return {};
+  }
+}
+
+function saveAchievements(data: Achievements) {
+  localStorage.setItem(achievementKey, JSON.stringify(data));
+}
+
+type NewRecords = {
+  newMinSteps: boolean;
+  newMinRotations: boolean;
+  firstNoReset: boolean;
+};
+
+function updateAchievement(levelId: string, stats: Stats): { achievements: Achievements; records: NewRecords } {
+  const achievements = loadAchievements();
+  const existing = achievements[levelId];
+  const records: NewRecords = {
+    newMinSteps: false,
+    newMinRotations: false,
+    firstNoReset: false
+  };
+
+  if (existing) {
+    if (stats.steps < existing.minSteps) {
+      achievements[levelId] = { ...existing, minSteps: stats.steps };
+      records.newMinSteps = true;
+    }
+    if (stats.rotations < existing.minRotations) {
+      achievements[levelId] = { ...achievements[levelId], minRotations: stats.rotations };
+      records.newMinRotations = true;
+    }
+    if (stats.resets === 0 && !existing.noResetCompleted) {
+      achievements[levelId] = { ...achievements[levelId], noResetCompleted: true };
+      records.firstNoReset = true;
+    }
+  } else {
+    achievements[levelId] = {
+      firstCompletedAt: new Date().toISOString(),
+      minSteps: stats.steps,
+      minRotations: stats.rotations,
+      noResetCompleted: stats.resets === 0
+    };
+    records.newMinSteps = true;
+    records.newMinRotations = true;
+    records.firstNoReset = stats.resets === 0;
+  }
+
+  saveAchievements(achievements);
+  return { achievements, records };
+}
 
 type Settings = {
   soundEnabled: boolean;
@@ -538,11 +604,102 @@ function TutorialOverlay({
   );
 }
 
+function AchievementPanel({
+  open,
+  levels,
+  onClose
+}: {
+  open: boolean;
+  levels: Level[];
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  const achievements = loadAchievements();
+  const completedLevels = levels.filter((l) => achievements[l.id]);
+  const totalCount = levels.length;
+  const completedCount = completedLevels.length;
+  const totalNoReset = completedLevels.filter((l) => achievements[l.id].noResetCompleted).length;
+
+  return (
+    <div className="achievement-overlay" onClick={onClose}>
+      <div className="achievement-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="achievement-header">
+          <h2 className="achievement-title">成就记录</h2>
+          <button className="achievement-close" onClick={onClose} aria-label="关闭成就面板">
+            ×
+          </button>
+        </div>
+
+        <div className="achievement-summary">
+          <div className="summary-card">
+            <span className="summary-value">{completedCount}</span>
+            <span className="summary-label">已完成关卡</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">{totalCount}</span>
+            <span className="summary-label">总关卡数</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">{totalNoReset}</span>
+            <span className="summary-label">无重置通关</span>
+          </div>
+        </div>
+
+        <div className="achievement-list">
+          {levels.map((level) => {
+            const record = achievements[level.id];
+            if (!record) {
+              return (
+                <div className="achievement-row locked" key={level.id}>
+                  <div className="achievement-row-name">
+                    <span className="achievement-lock-icon">🔒</span>
+                    {level.name}
+                  </div>
+                  <div className="achievement-row-status">未完成</div>
+                </div>
+              );
+            }
+            return (
+              <div className="achievement-row" key={level.id}>
+                <div className="achievement-row-name">
+                  <span className="achievement-unlock-icon">✦</span>
+                  {level.name}
+                </div>
+                <div className="achievement-row-details">
+                  <div className="achievement-detail">
+                    <span className="detail-label">首次完成</span>
+                    <span className="detail-value">{formatLastPlayed(record.firstCompletedAt)}</span>
+                  </div>
+                  <div className="achievement-detail">
+                    <span className="detail-label">最低步数</span>
+                    <span className="detail-value accent">{record.minSteps}</span>
+                  </div>
+                  <div className="achievement-detail">
+                    <span className="detail-label">最低旋转</span>
+                    <span className="detail-value accent">{record.minRotations}</span>
+                  </div>
+                  <div className="achievement-detail">
+                    <span className="detail-label">无重置通关</span>
+                    <span className={`detail-value ${record.noResetCompleted ? "success" : "dim"}`}>
+                      {record.noResetCompleted ? "✓" : "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CompleteModal({
   open,
   levelName,
   stats,
   hasNext,
+  newRecords,
   onClose,
   onNext,
   onBackToHall
@@ -551,11 +708,13 @@ function CompleteModal({
   levelName: string;
   stats: Stats;
   hasNext: boolean;
+  newRecords: NewRecords;
   onClose: () => void;
   onNext: () => void;
   onBackToHall: () => void;
 }) {
   if (!open) return null;
+  const hasAnyRecord = newRecords.newMinSteps || newRecords.newMinRotations || newRecords.firstNoReset;
   return (
     <div className="complete-overlay" onClick={onClose}>
       <div className="complete-panel" onClick={(e) => e.stopPropagation()}>
@@ -565,19 +724,27 @@ function CompleteModal({
           <p className="complete-level">{levelName}</p>
         </div>
         <div className="complete-stats">
-          <div className="stat-item">
+          <div className={`stat-item ${newRecords.newMinSteps ? "new-record" : ""}`}>
             <span className="stat-label">使用步数</span>
             <span className="stat-value">{stats.steps}</span>
+            {newRecords.newMinSteps && <span className="record-badge">新纪录</span>}
           </div>
-          <div className="stat-item">
+          <div className={`stat-item ${newRecords.newMinRotations ? "new-record" : ""}`}>
             <span className="stat-label">旋转次数</span>
             <span className="stat-value">{stats.rotations}</span>
+            {newRecords.newMinRotations && <span className="record-badge">新纪录</span>}
           </div>
-          <div className="stat-item">
+          <div className={`stat-item ${newRecords.firstNoReset ? "new-record" : ""}`}>
             <span className="stat-label">重置次数</span>
             <span className="stat-value">{stats.resets}</span>
+            {newRecords.firstNoReset && <span className="record-badge no-reset-badge">首次零重置</span>}
           </div>
         </div>
+        {hasAnyRecord && (
+          <div className="complete-record-banner">
+            🏆 刷新了个人纪录！
+          </div>
+        )}
         <div className="complete-actions">
           <button className="complete-btn secondary" onClick={onBackToHall}>
             返回关卡大厅
@@ -666,13 +833,15 @@ function LevelSelectHall({
   save,
   onSelectLevel,
   onOpenTutorial,
-  onOpenSettings
+  onOpenSettings,
+  onOpenAchievements
 }: {
   levels: Level[];
   save: Save;
   onSelectLevel: (levelId: string) => void;
   onOpenTutorial: () => void;
   onOpenSettings: () => void;
+  onOpenAchievements: () => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length;
@@ -685,6 +854,9 @@ function LevelSelectHall({
           <h1>选择关卡</h1>
         </div>
         <div className="hall-actions">
+          <button className="achievement-btn" onClick={onOpenAchievements}>
+            🏆 成就
+          </button>
           <button className="settings-btn" onClick={onOpenSettings}>
             ⚙ 设置
           </button>
@@ -758,6 +930,8 @@ export default function App() {
   const [stats, setStats] = useState<Stats>({ steps: 0, rotations: 0, resets: 0 });
   const [showComplete, setShowComplete] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
   const prevSolvedRef = useRef(false);
 
@@ -861,6 +1035,8 @@ export default function App() {
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current) {
+      const { records } = updateAchievement(level.id, stats);
+      setNewRecords(records);
       playSound("success");
       setShowComplete(true);
     }
@@ -978,8 +1154,9 @@ export default function App() {
   if (view === "hall") {
     return (
       <main className="runes">
-        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} onOpenSettings={() => setSettingsOpen(true)} />
+        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} onOpenSettings={() => setSettingsOpen(true)} onOpenAchievements={() => setAchievementsOpen(true)} />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
+        <AchievementPanel open={achievementsOpen} levels={levels} onClose={() => setAchievementsOpen(false)} />
       </main>
     );
   }
@@ -1109,6 +1286,7 @@ export default function App() {
         levelName={level.name}
         stats={stats}
         hasNext={hasNextLevel}
+        newRecords={newRecords}
         onClose={() => setShowComplete(false)}
         onNext={nextLevel}
         onBackToHall={backToHall}
