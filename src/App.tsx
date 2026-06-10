@@ -934,6 +934,7 @@ export default function App() {
   const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
   const prevSolvedRef = useRef(false);
+  const hasInteractionRef = useRef(false);
 
   const tutorialRefs: TutorialRefs = {
     pieces: useRef<HTMLDivElement>(null),
@@ -1034,7 +1035,7 @@ export default function App() {
   }, [level.id, save.completed, solved]);
 
   useEffect(() => {
-    if (solved && !prevSolvedRef.current) {
+    if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
       const { records } = updateAchievement(level.id, stats);
       setNewRecords(records);
       playSound("success");
@@ -1051,6 +1052,7 @@ export default function App() {
     const out = cells.some(([r, c]) => r < 0 || c < 0 || r >= level.size || c >= level.size);
     const collision = cells.some(([r, c]) => occupied.has(cellKey(r, c)));
     if (out || collision) return;
+    hasInteractionRef.current = true;
     setSave((current) => ({ ...current, placements: [...current.placements, { pieceId: activePiece, row, col, rotation }] }));
     setStats((s) => ({ ...s, steps: s.steps + 1 }));
     playSound("place");
@@ -1059,6 +1061,8 @@ export default function App() {
   }
 
   function switchLevel(levelId: string) {
+    hasInteractionRef.current = false;
+    prevSolvedRef.current = false;
     setSave((current) => ({
       ...current,
       levelId,
@@ -1074,6 +1078,8 @@ export default function App() {
   }
 
   function backToHall() {
+    hasInteractionRef.current = false;
+    prevSolvedRef.current = false;
     setView("hall");
     setActivePiece(null);
     setRotation(0);
@@ -1088,11 +1094,13 @@ export default function App() {
 
   function handleRotate() {
     setRotation((value) => (value + 1) % 4);
+    hasInteractionRef.current = true;
     setStats((s) => ({ ...s, rotations: s.rotations + 1 }));
     playSound("rotate");
   }
 
   function handleReset() {
+    hasInteractionRef.current = true;
     setSave((current) => ({ ...current, placements: [] }));
     setStats((s) => ({ ...s, resets: s.resets + 1 }));
     playSound("reset");
