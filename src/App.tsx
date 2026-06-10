@@ -757,6 +757,7 @@ export default function App() {
   const [tutorialStep, setTutorialStep] = useState(0);
   const [stats, setStats] = useState<Stats>({ steps: 0, rotations: 0, resets: 0 });
   const [showComplete, setShowComplete] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
   const prevSolvedRef = useRef(false);
 
@@ -892,6 +893,7 @@ export default function App() {
     setRotation(0);
     setStats({ steps: 0, rotations: 0, resets: 0 });
     setShowComplete(false);
+    setShowHint(false);
     setView("game");
   }
 
@@ -900,6 +902,7 @@ export default function App() {
     setActivePiece(null);
     setRotation(0);
     setShowComplete(false);
+    setShowHint(false);
   }
 
   function handleSetActivePiece(id: string) {
@@ -919,6 +922,10 @@ export default function App() {
     playSound("reset");
   }
 
+  function toggleHint() {
+    setShowHint((current) => !current);
+  }
+
   function nextLevel() {
     const currentIndex = levels.findIndex((item) => item.id === level.id);
     const nextIndex = currentIndex + 1;
@@ -933,6 +940,40 @@ export default function App() {
   const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
   const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
   const hasNextLevel = currentLevelIndex < levels.length - 1;
+
+  const hintAnalysis = useMemo(() => {
+    const missingTargetCells: Cell[] = [];
+    level.target.forEach(([r, c]) => {
+      if (!occupied.has(cellKey(r, c))) {
+        missingTargetCells.push([r, c]);
+      }
+    });
+
+    const outOfBoundsOrNonTarget: Cell[] = [];
+    occupied.forEach((_color, key) => {
+      const [r, c] = key.split(":").map(Number);
+      if (!targetSet.has(key)) {
+        outOfBoundsOrNonTarget.push([r, c]);
+      }
+    });
+
+    return {
+      missingTargetCells,
+      outOfBoundsOrNonTarget,
+      missingCount: missingTargetCells.length,
+      misplacedCount: outOfBoundsOrNonTarget.length
+    };
+  }, [level.target, occupied, targetSet]);
+
+  const missingTargetSet = useMemo(
+    () => new Set(hintAnalysis.missingTargetCells.map(([r, c]) => cellKey(r, c))),
+    [hintAnalysis.missingTargetCells]
+  );
+
+  const misplacedSet = useMemo(
+    () => new Set(hintAnalysis.outOfBoundsOrNonTarget.map(([r, c]) => cellKey(r, c))),
+    [hintAnalysis.outOfBoundsOrNonTarget]
+  );
 
   if (view === "hall") {
     return (
@@ -958,6 +999,9 @@ export default function App() {
           <button className="tutorial-reopen-btn" onClick={openTutorial}>
             教程
           </button>
+          <button className={`hint-btn ${showHint ? "active" : ""}`} onClick={toggleHint}>
+            💡 提示
+          </button>
           <button className="back-btn" onClick={backToHall}>← 返回关卡大厅</button>
         </div>
       </section>
@@ -971,10 +1015,16 @@ export default function App() {
               const col = index % level.size;
               const key = cellKey(row, col);
               const isTarget = targetSet.has(key);
-              const targetClass = isTarget ? `target${settings.highlightTarget ? "" : " no-highlight"}` : "";
+              const isMissingTarget = showHint && missingTargetSet.has(key);
+              const isMisplaced = showHint && misplacedSet.has(key);
+              const classes = [
+                isTarget ? `target${settings.highlightTarget ? "" : " no-highlight"}` : "",
+                isMissingTarget ? "hint-missing" : "",
+                isMisplaced ? "hint-misplaced" : ""
+              ].filter(Boolean).join(" ");
               return (
                 <button
-                  className={targetClass}
+                  className={classes}
                   key={key}
                   onClick={() => place(row, col)}
                 >
@@ -983,6 +1033,43 @@ export default function App() {
               );
             })}
           </div>
+          {showHint && (
+            <div className="hint-panel">
+              <div className="hint-panel-header">
+                <h3>关卡分析</h3>
+              </div>
+              <div className="hint-panel-body">
+                <div className={`hint-panel-item ${hintAnalysis.missingCount > 0 ? "warn" : "ok"}`}>
+                  <span className="hint-panel-label">
+                    <i className="hint-icon missing" />
+                    未覆盖的目标格
+                  </span>
+                  <span className="hint-panel-count">
+                    {hintAnalysis.missingCount}
+                  </span>
+                </div>
+                <div className={`hint-panel-item ${hintAnalysis.misplacedCount > 0 ? "error" : "ok"}`}>
+                  <span className="hint-panel-label">
+                    <i className="hint-icon misplaced" />
+                    越界或非目标区域
+                  </span>
+                  <span className="hint-panel-count">
+                    {hintAnalysis.misplacedCount}
+                  </span>
+                </div>
+                <div className="hint-panel-legend">
+                  <div className="legend-item">
+                    <span className="legend-swatch missing-swatch" />
+                    <span>需要填充</span>
+                  </div>
+                  <div className="legend-item">
+                    <span className="legend-swatch misplaced-swatch" />
+                    <span>放置错误</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <p ref={tutorialRefs.hint} className={solved ? "hint solved" : "hint"}>{solved ? "符文已闭合，关卡完成。" : "选择碎片后点击棋盘放置，已放下的碎片可用重置清空。"}</p>
         </div>
 
