@@ -732,13 +732,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (solved && !prevSolvedRef.current) {
-      playSound("success");
-    }
-    prevSolvedRef.current = solved;
-  }, [solved, settings.soundEnabled]);
-
   function completeTutorial() {
     localStorage.setItem(tutorialKey, "1");
     setShowTutorial(false);
@@ -796,8 +789,10 @@ export default function App() {
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current) {
+      playSound("success");
       setShowComplete(true);
     }
+    prevSolvedRef.current = solved;
   }, [solved]);
 
   function place(row: number, col: number) {
@@ -864,6 +859,10 @@ export default function App() {
     }
   }
 
+  const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
+  const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
+  const hasNextLevel = currentLevelIndex < levels.length - 1;
+
   if (view === "hall") {
     return (
       <main className="runes">
@@ -872,10 +871,6 @@ export default function App() {
       </main>
     );
   }
-
-  const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
-  const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
-  const hasNextLevel = currentLevelIndex < levels.length - 1;
 
   return (
     <main className="runes">
