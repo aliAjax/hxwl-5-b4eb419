@@ -591,6 +591,76 @@ function CompleteModal({
   );
 }
 
+function PieceThumbnail({ piece }: { piece: Piece }) {
+  const rows = Math.max(...piece.cells.map(([r]) => r)) + 1;
+  const cols = Math.max(...piece.cells.map(([, c]) => c)) + 1;
+  const cellSet = useMemo(
+    () => new Set(piece.cells.map(([r, c]) => cellKey(r, c))),
+    [piece.cells]
+  );
+  return (
+    <div className="piece-thumb" title={`${piece.name}（${piece.cells.length} 格）`}>
+      <div
+        className="piece-thumb-grid"
+        style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      >
+        {Array.from({ length: rows * cols }).map((_, index) => {
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          const filled = cellSet.has(cellKey(row, col));
+          return (
+            <span
+              key={`${row}:${col}`}
+              className="piece-thumb-cell"
+              style={filled ? { background: piece.color } : undefined}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LevelPreview({ level }: { level: Level }) {
+  const targetSet = useMemo(
+    () => new Set(level.target.map(([r, c]) => cellKey(r, c))),
+    [level.target]
+  );
+  return (
+    <div className="level-preview">
+      <div className="preview-section">
+        <div className="preview-label">目标形状</div>
+        <div className="preview-grid-wrap">
+          <div
+            className="preview-grid"
+            style={{ gridTemplateColumns: `repeat(${level.size}, 1fr)` }}
+          >
+            {Array.from({ length: level.size * level.size }).map((_, index) => {
+              const row = Math.floor(index / level.size);
+              const col = index % level.size;
+              const isTarget = targetSet.has(cellKey(row, col));
+              return (
+                <span
+                  key={`${row}:${col}`}
+                  className={isTarget ? "preview-cell target" : "preview-cell"}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="preview-section">
+        <div className="preview-label">符文碎片（{level.pieces.length}）</div>
+        <div className="preview-pieces">
+          {level.pieces.map((piece) => (
+            <PieceThumbnail key={piece.id} piece={piece} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LevelSelectHall({
   levels,
   save,
@@ -642,6 +712,7 @@ function LevelSelectHall({
                 {isCompleted && <span className="completed-badge">✓ 已完成</span>}
               </div>
               <h3 className="level-name">{item.name}</h3>
+              <LevelPreview level={item} />
               <div className="level-meta">
                 <span className="meta-item">
                   <i className="meta-icon board-icon" />
