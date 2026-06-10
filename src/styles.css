@@ -396,6 +396,10 @@ h1 {
   .level-cards {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   }
+
+  .tutorial-tooltip {
+    max-width: min(420px, calc(100vw - 32px));
+  }
 }
 
 .hall-actions {

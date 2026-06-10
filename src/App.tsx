@@ -76,7 +76,7 @@ const tutorialSteps: TutorialStep[] = [
     title: "第五步：完成判定",
     description: "当所有发光的目标格子都恰好被碎片填满（不多不少），符文闭合，关卡即完成！",
     target: "hint",
-    position: "top"
+    position: "bottom"
   }
 ];
 
@@ -245,38 +245,69 @@ function TutorialOverlay({
     height: rect.height + padding * 2
   };
 
-  let tooltipStyle: React.CSSProperties = {};
-  const tooltipWidth = 320;
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const tooltipWidth = viewportW < 560 ? viewportW - 32 : 320;
+  const tooltipHeight = 220;
   const gap = 16;
+  const margin = 12;
 
-  switch (step.position) {
-    case "top":
-      tooltipStyle = {
-        top: rect.top - gap,
-        left: rect.left + rect.width / 2 - tooltipWidth / 2,
-        transform: "translateY(-100%)"
-      };
+  const isSingleColumn = viewportW < 900;
+
+  function computePosition(pos: TutorialStep["position"], r: DOMRect): { style: React.CSSProperties; visible: boolean } {
+    let style: React.CSSProperties = {};
+    let visible = true;
+
+    if (pos === "top") {
+      let left = r.left + r.width / 2 - tooltipWidth / 2;
+      left = Math.max(margin, Math.min(left, viewportW - tooltipWidth - margin));
+      const top = r.top - gap - tooltipHeight;
+      style = { top, left };
+      if (top < margin) visible = false;
+    } else if (pos === "bottom") {
+      let left = r.left + r.width / 2 - tooltipWidth / 2;
+      left = Math.max(margin, Math.min(left, viewportW - tooltipWidth - margin));
+      const top = r.bottom + gap;
+      style = { top, left };
+      if (top + tooltipHeight > viewportH - margin) visible = false;
+    } else if (pos === "left") {
+      let top = r.top + r.height / 2 - tooltipHeight / 2;
+      top = Math.max(margin, Math.min(top, viewportH - tooltipHeight - margin));
+      const left = r.left - gap - tooltipWidth;
+      style = { top, left };
+      if (left < margin) visible = false;
+    } else if (pos === "right") {
+      let top = r.top + r.height / 2 - tooltipHeight / 2;
+      top = Math.max(margin, Math.min(top, viewportH - tooltipHeight - margin));
+      const left = r.right + gap;
+      style = { top, left };
+      if (left + tooltipWidth > viewportW - margin) visible = false;
+    }
+
+    return { style, visible };
+  }
+
+  const preferred = isSingleColumn
+    ? step.position === "left" || step.position === "right"
+      ? "bottom"
+      : step.position
+    : step.position;
+
+  const order: TutorialStep["position"][] = (() => {
+    const base: TutorialStep["position"][] = isSingleColumn
+      ? ["bottom", "top"]
+      : [preferred, "bottom", "top", "left", "right"];
+    return Array.from(new Set(base));
+  })();
+
+  let tooltipStyle: React.CSSProperties = {};
+  for (const pos of order) {
+    const result = computePosition(pos, rect);
+    if (result.visible) {
+      tooltipStyle = result.style;
       break;
-    case "bottom":
-      tooltipStyle = {
-        top: rect.bottom + gap,
-        left: rect.left + rect.width / 2 - tooltipWidth / 2
-      };
-      break;
-    case "left":
-      tooltipStyle = {
-        top: rect.top + rect.height / 2,
-        left: rect.left - gap - tooltipWidth,
-        transform: "translateY(-50%)"
-      };
-      break;
-    case "right":
-      tooltipStyle = {
-        top: rect.top + rect.height / 2,
-        left: rect.right + gap,
-        transform: "translateY(-50%)"
-      };
-      break;
+    }
+    tooltipStyle = result.style;
   }
 
   return (
