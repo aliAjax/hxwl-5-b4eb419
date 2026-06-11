@@ -339,6 +339,10 @@ export function validateAndImportLevel(jsonStr: string): ImportValidationResult 
     }
   }
 
+  if (errors.length > 0) {
+    return { valid: false, errors, warnings, level: null };
+  }
+
   const levelId = `${WORKSHOP_LEVEL_PREFIX}import-${Date.now()}`;
   const importedPieces = pieces.map((p, i) => ({
     ...p,
