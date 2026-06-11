@@ -1771,15 +1771,12 @@ export default function App() {
     const piece = level.pieces.find((item) => item.id === activePiece);
     if (!piece) return result;
     const [hoverRow, hoverCol] = hoverCell;
-    const rotatedCells = rotate(piece.cells, rotation);
-    for (const [dr, dc] of rotatedCells) {
-      const r = hoverRow + dr;
-      const c = hoverCol + dc;
+    const cells = rotate(piece.cells, rotation).map(([dr, dc]) => [hoverRow + dr, hoverCol + dc] as Cell);
+    const hasInvalidCell = cells.some(([r, c]) => r < 0 || c < 0 || r >= level.size || c >= level.size || occupied.has(cellKey(r, c)));
+    for (const [r, c] of cells) {
       const outOfBounds = r < 0 || c < 0 || r >= level.size || c >= level.size;
-      const collision = !outOfBounds && occupied.has(cellKey(r, c));
-      const valid = !outOfBounds && !collision;
       if (outOfBounds) continue;
-      result.set(cellKey(r, c), { valid, color: piece.color });
+      result.set(cellKey(r, c), { valid: !hasInvalidCell, color: piece.color });
     }
     return result;
   }, [activePiece, hoverCell, level, rotation, occupied]);
@@ -2135,7 +2132,7 @@ export default function App() {
                   onTouchEnd={() => setHoverCell(null)}
                 >
                   {occupied.has(key) && <i style={{ background: occupied.get(key) }} />}
-                  {isPreview && !occupied.has(key) && <i className={`preview-layer ${isPreviewValid ? "valid" : "invalid"}`} style={isPreviewValid ? { background: preview!.color } : undefined} />}
+                  {isPreview && <i className={`preview-layer ${isPreviewValid ? "valid" : "invalid"}`} style={isPreviewValid ? { background: preview!.color } : undefined} />}
                 </button>
               );
             })}
