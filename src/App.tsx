@@ -2088,10 +2088,10 @@ export default function App() {
   }, [level.target, occupied]);
 
   useEffect(() => {
-    if (solved && !isDailyChallenge && !save.completed.includes(level.id)) {
+    if (solved && !isDailyChallenge && !isHistoryReplay && !save.completed.includes(level.id)) {
       setSave((current) => ({ ...current, completed: [...current.completed, level.id] }));
     }
-  }, [level.id, save.completed, solved, isDailyChallenge]);
+  }, [level.id, save.completed, solved, isDailyChallenge, isHistoryReplay]);
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
