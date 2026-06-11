@@ -72,13 +72,42 @@ type LevelRecord = {
   minSteps: number;
   minRotations: number;
   noResetCompleted: boolean;
+  playCount: number;
+  completedCount: number;
+  lastCompletedAt: string;
+  totalSteps: number;
+  totalRotations: number;
 };
 
 type Achievements = Record<string, LevelRecord>;
 
+function migrateLevelRecord(record: Partial<LevelRecord> & { firstCompletedAt: string; minSteps: number; minRotations: number; noResetCompleted: boolean }): LevelRecord {
+  return {
+    firstCompletedAt: record.firstCompletedAt,
+    minSteps: record.minSteps,
+    minRotations: record.minRotations,
+    noResetCompleted: record.noResetCompleted,
+    playCount: record.playCount ?? 1,
+    completedCount: record.completedCount ?? 1,
+    lastCompletedAt: record.lastCompletedAt || record.firstCompletedAt,
+    totalSteps: record.totalSteps ?? record.minSteps,
+    totalRotations: record.totalRotations ?? record.minRotations
+  };
+}
+
 function loadAchievements(): Achievements {
   try {
-    return JSON.parse(localStorage.getItem(achievementKey) || "{}") as Achievements;
+    const raw = JSON.parse(localStorage.getItem(achievementKey) || "{}") as Achievements;
+    let needsSave = false;
+    for (const key of Object.keys(raw)) {
+      const rec = raw[key] as Partial<LevelRecord> & { firstCompletedAt: string; minSteps: number; minRotations: number; noResetCompleted: boolean };
+      if (rec.playCount === undefined || rec.completedCount === undefined || rec.lastCompletedAt === undefined || rec.totalSteps === undefined || rec.totalRotations === undefined) {
+        raw[key] = migrateLevelRecord(rec);
+        needsSave = true;
+      }
+    }
+    if (needsSave) saveAchievements(raw);
+    return raw;
   } catch {
     return {};
   }
@@ -86,6 +115,27 @@ function loadAchievements(): Achievements {
 
 function saveAchievements(data: Achievements) {
   localStorage.setItem(achievementKey, JSON.stringify(data));
+}
+
+function touchAchievementPlay(levelId: string) {
+  const achievements = loadAchievements();
+  const existing = achievements[levelId];
+  if (existing) {
+    achievements[levelId] = { ...existing, playCount: existing.playCount + 1 };
+  } else {
+    achievements[levelId] = {
+      firstCompletedAt: "",
+      minSteps: 999999,
+      minRotations: 999999,
+      noResetCompleted: false,
+      playCount: 1,
+      completedCount: 0,
+      lastCompletedAt: "",
+      totalSteps: 0,
+      totalRotations: 0
+    };
+  }
+  saveAchievements(achievements);
 }
 
 function loadFavorites(): string[] {
@@ -117,40 +167,73 @@ type NewRecords = {
   newMinSteps: boolean;
   newMinRotations: boolean;
   firstNoReset: boolean;
+  firstCompletion: boolean;
 };
 
 function updateAchievement(levelId: string, stats: Stats): { achievements: Achievements; records: NewRecords } {
   const achievements = loadAchievements();
   const existing = achievements[levelId];
+  const now = new Date().toISOString();
   const records: NewRecords = {
     newMinSteps: false,
     newMinRotations: false,
-    firstNoReset: false
+    firstNoReset: false,
+    firstCompletion: false
   };
 
-  if (existing) {
+  if (existing && existing.firstCompletedAt) {
+    const updated: LevelRecord = {
+      ...existing,
+      completedCount: existing.completedCount + 1,
+      lastCompletedAt: now,
+      totalSteps: existing.totalSteps + stats.steps,
+      totalRotations: existing.totalRotations + stats.rotations
+    };
     if (stats.steps < existing.minSteps) {
-      achievements[levelId] = { ...existing, minSteps: stats.steps };
+      updated.minSteps = stats.steps;
       records.newMinSteps = true;
     }
     if (stats.rotations < existing.minRotations) {
-      achievements[levelId] = { ...achievements[levelId], minRotations: stats.rotations };
+      updated.minRotations = stats.rotations;
       records.newMinRotations = true;
     }
     if (stats.resets === 0 && !existing.noResetCompleted) {
-      achievements[levelId] = { ...achievements[levelId], noResetCompleted: true };
+      updated.noResetCompleted = true;
       records.firstNoReset = true;
     }
-  } else {
+    achievements[levelId] = updated;
+  } else if (existing && !existing.firstCompletedAt) {
     achievements[levelId] = {
-      firstCompletedAt: new Date().toISOString(),
+      ...existing,
+      firstCompletedAt: now,
       minSteps: stats.steps,
       minRotations: stats.rotations,
-      noResetCompleted: stats.resets === 0
+      noResetCompleted: stats.resets === 0,
+      completedCount: existing.completedCount + 1,
+      lastCompletedAt: now,
+      totalSteps: existing.totalSteps + stats.steps,
+      totalRotations: existing.totalRotations + stats.rotations
     };
     records.newMinSteps = true;
     records.newMinRotations = true;
     records.firstNoReset = stats.resets === 0;
+    records.firstCompletion = true;
+  } else {
+    achievements[levelId] = {
+      firstCompletedAt: now,
+      minSteps: stats.steps,
+      minRotations: stats.rotations,
+      noResetCompleted: stats.resets === 0,
+      playCount: 1,
+      completedCount: 1,
+      lastCompletedAt: now,
+      totalSteps: stats.steps,
+      totalRotations: stats.rotations
+    };
+    records.newMinSteps = true;
+    records.newMinRotations = true;
+    records.firstNoReset = stats.resets === 0;
+    records.firstCompletion = true;
   }
 
   saveAchievements(achievements);
@@ -162,13 +245,15 @@ type Settings = {
   animationIntensity: number;
   theme: "dark" | "light";
   highlightTarget: boolean;
+  practiceMode: boolean;
 };
 
 const defaultSettings: Settings = {
   soundEnabled: true,
   animationIntensity: 100,
   theme: "dark",
-  highlightTarget: true
+  highlightTarget: true,
+  practiceMode: false
 };
 
 function loadSettings(): Settings {
@@ -334,6 +419,20 @@ function SettingsPanel({
               role="switch"
               aria-checked={settings.highlightTarget}
               aria-label="目标格高亮开关"
+            />
+          </div>
+
+          <div className="settings-item">
+            <label className="settings-label">
+              练习模式
+              <span className="settings-desc">开启放置辅助预览，完成不计入成就记录</span>
+            </label>
+            <button
+              className={`switch ${settings.practiceMode ? "on" : ""}`}
+              onClick={() => setPartial({ practiceMode: !settings.practiceMode })}
+              role="switch"
+              aria-checked={settings.practiceMode}
+              aria-label="练习模式开关"
             />
           </div>
         </div>
@@ -684,24 +783,39 @@ function TutorialOverlay({
 function AchievementPanel({
   open,
   levels,
+  workshopLevels,
+  dailyStreak,
   onClose
 }: {
   open: boolean;
   levels: Level[];
+  workshopLevels: Level[];
+  dailyStreak: number;
   onClose: () => void;
 }) {
   if (!open) return null;
   const achievements = loadAchievements();
-  const completedLevels = levels.filter((l) => achievements[l.id]);
-  const totalCount = levels.length;
+  const presetLevels = levels.filter((l) => !l.id.startsWith(WORKSHOP_LEVEL_PREFIX));
+  const workshopLevelList = workshopLevels;
+  const completedLevels = presetLevels.filter((l) => achievements[l.id]?.firstCompletedAt);
+  const totalCount = presetLevels.length;
   const completedCount = completedLevels.length;
   const totalNoReset = completedLevels.filter((l) => achievements[l.id].noResetCompleted).length;
+  const totalPlayCount = Object.values(achievements).reduce((sum, r) => sum + r.playCount, 0);
+  const totalCompletedCount = Object.values(achievements).reduce((sum, r) => sum + r.completedCount, 0);
+  const workshopCompletedCount = workshopLevelList.filter((l) => achievements[l.id]?.firstCompletedAt).length;
+  const allLastCompleted = Object.values(achievements)
+    .map((r) => r.lastCompletedAt)
+    .filter(Boolean)
+    .sort()
+    .reverse();
+  const lastCompletedAt = allLastCompleted[0] || null;
 
   return (
     <div className="achievement-overlay" onClick={onClose}>
       <div className="achievement-panel" onClick={(e) => e.stopPropagation()}>
         <div className="achievement-header">
-          <h2 className="achievement-title">成就记录</h2>
+          <h2 className="achievement-title">个人档案</h2>
           <button className="achievement-close" onClick={onClose} aria-label="关闭成就面板">
             ×
           </button>
@@ -709,30 +823,51 @@ function AchievementPanel({
 
         <div className="achievement-summary">
           <div className="summary-card">
-            <span className="summary-value">{completedCount}</span>
-            <span className="summary-label">已完成关卡</span>
+            <span className="summary-value">{totalPlayCount}</span>
+            <span className="summary-label">总游玩次数</span>
           </div>
           <div className="summary-card">
-            <span className="summary-value">{totalCount}</span>
-            <span className="summary-label">总关卡数</span>
+            <span className="summary-value">{totalCompletedCount}</span>
+            <span className="summary-label">总完成次数</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">{completedCount}/{totalCount}</span>
+            <span className="summary-label">已完成关卡</span>
           </div>
           <div className="summary-card">
             <span className="summary-value">{totalNoReset}</span>
             <span className="summary-label">无重置通关</span>
           </div>
+          <div className="summary-card">
+            <span className="summary-value">{dailyStreak > 0 ? dailyStreak : "—"}</span>
+            <span className="summary-label">每日连续天数</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">{workshopCompletedCount}</span>
+            <span className="summary-label">工坊完成数</span>
+          </div>
         </div>
+
+        {lastCompletedAt && (
+          <div className="achievement-last-completed">
+            最近完成：{formatLastPlayed(lastCompletedAt)}
+          </div>
+        )}
 
         <div className="achievement-list">
           {levels.map((level) => {
             const record = achievements[level.id];
-            if (!record) {
+            if (!record || !record.firstCompletedAt) {
+              const playCount = record?.playCount;
               return (
                 <div className="achievement-row locked" key={level.id}>
                   <div className="achievement-row-name">
                     <span className="achievement-lock-icon">🔒</span>
                     {level.name}
                   </div>
-                  <div className="achievement-row-status">未完成</div>
+                  <div className="achievement-row-status">
+                    {playCount ? `游玩 ${playCount} 次 · 未完成` : "未完成"}
+                  </div>
                 </div>
               );
             }
@@ -761,6 +896,14 @@ function AchievementPanel({
                       {record.noResetCompleted ? "✓" : "—"}
                     </span>
                   </div>
+                  <div className="achievement-detail">
+                    <span className="detail-label">游玩/完成</span>
+                    <span className="detail-value">{record.playCount}/{record.completedCount}</span>
+                  </div>
+                  <div className="achievement-detail">
+                    <span className="detail-label">最近完成</span>
+                    <span className="detail-value">{formatLastPlayed(record.lastCompletedAt)}</span>
+                  </div>
                 </div>
               </div>
             );
@@ -780,7 +923,8 @@ function CompleteModal({
   onClose,
   onNext,
   onBackToHall,
-  isHistoryReplay
+  isHistoryReplay,
+  isPracticeMode
 }: {
   open: boolean;
   levelName: string;
@@ -791,18 +935,29 @@ function CompleteModal({
   onNext: () => void;
   onBackToHall: () => void;
   isHistoryReplay?: boolean;
+  isPracticeMode?: boolean;
 }) {
   if (!open) return null;
-  const hasAnyRecord = newRecords.newMinSteps || newRecords.newMinRotations || newRecords.firstNoReset;
+  const hasAnyRecord = newRecords.newMinSteps || newRecords.newMinRotations || newRecords.firstNoReset || newRecords.firstCompletion;
+  const recordLabels: string[] = [];
+  if (newRecords.firstCompletion) recordLabels.push("首次通关");
+  if (newRecords.newMinSteps) recordLabels.push("最低步数");
+  if (newRecords.newMinRotations) recordLabels.push("最低旋转");
+  if (newRecords.firstNoReset) recordLabels.push("首次零重置");
   return (
     <div className="complete-overlay" onClick={onClose}>
-      <div className={`complete-panel ${isHistoryReplay ? "history-replay-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`complete-panel ${isHistoryReplay ? "history-replay-panel" : ""} ${isPracticeMode ? "practice-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="complete-header">
-          <div className={`complete-icon ${isHistoryReplay ? "history-icon" : ""}`}>{isHistoryReplay ? "⏪" : "✦"}</div>
-          <h2 className={`complete-title ${isHistoryReplay ? "history-title" : ""}`}>
-            {isHistoryReplay ? "历史回放完成" : "符文已闭合"}
+          <div className={`complete-icon ${isHistoryReplay ? "history-icon" : ""} ${isPracticeMode ? "practice-icon" : ""}`}>
+            {isPracticeMode ? "🧪" : isHistoryReplay ? "⏪" : "✦"}
+          </div>
+          <h2 className={`complete-title ${isHistoryReplay ? "history-title" : ""} ${isPracticeMode ? "practice-title" : ""}`}>
+            {isPracticeMode ? "练习完成" : isHistoryReplay ? "历史回放完成" : "符文已闭合"}
           </h2>
           <p className="complete-level">{levelName}</p>
+          {isPracticeMode && (
+            <p className="complete-practice-note">练习模式不记录成就与统计数据</p>
+          )}
           {isHistoryReplay && (
             <p className="complete-history-note">历史回放不影响每日挑战连续天数</p>
           )}
@@ -811,22 +966,22 @@ function CompleteModal({
           <div className={`stat-item ${newRecords.newMinSteps ? "new-record" : ""}`}>
             <span className="stat-label">使用步数</span>
             <span className="stat-value">{stats.steps}</span>
-            {newRecords.newMinSteps && <span className="record-badge">新纪录</span>}
+            {newRecords.newMinSteps && !isPracticeMode && <span className="record-badge">新纪录</span>}
           </div>
           <div className={`stat-item ${newRecords.newMinRotations ? "new-record" : ""}`}>
             <span className="stat-label">旋转次数</span>
             <span className="stat-value">{stats.rotations}</span>
-            {newRecords.newMinRotations && <span className="record-badge">新纪录</span>}
+            {newRecords.newMinRotations && !isPracticeMode && <span className="record-badge">新纪录</span>}
           </div>
           <div className={`stat-item ${newRecords.firstNoReset ? "new-record" : ""}`}>
             <span className="stat-label">重置次数</span>
             <span className="stat-value">{stats.resets}</span>
-            {newRecords.firstNoReset && <span className="record-badge no-reset-badge">首次零重置</span>}
+            {newRecords.firstNoReset && !isPracticeMode && <span className="record-badge no-reset-badge">首次零重置</span>}
           </div>
         </div>
-        {hasAnyRecord && (
+        {hasAnyRecord && !isPracticeMode && (
           <div className="complete-record-banner">
-            🏆 刷新了个人纪录！
+            🏆 刷新纪录：{recordLabels.join(" · ")}
           </div>
         )}
         <div className="complete-actions">
@@ -1775,7 +1930,7 @@ export default function App() {
   const [workshopOpen, setWorkshopOpen] = useState(false);
   const [workshopLevels, setWorkshopLevels] = useState<Level[]>(loadWorkshopLevels);
   const [favorites, setFavorites] = useState<string[]>(loadFavorites);
-  const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
+  const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false, firstCompletion: false });
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
   const [dailyRecord, setDailyRecord] = useState<DailyChallengeRecord>(() => getDailyRecord());
@@ -2067,6 +2222,7 @@ export default function App() {
   type PreviewCell = { valid: boolean; color: string };
   const previewCells = useMemo<Map<string, PreviewCell>>(() => {
     const result = new Map<string, PreviewCell>();
+    if (!settings.practiceMode) return result;
     if (!activePiece || !hoverCell) return result;
     const piece = level.pieces.find((item) => item.id === activePiece);
     if (!piece) return result;
@@ -2079,7 +2235,7 @@ export default function App() {
       result.set(cellKey(r, c), { valid: !hasInvalidCell, color: piece.color });
     }
     return result;
-  }, [activePiece, hoverCell, level, rotation, occupied]);
+  }, [settings.practiceMode, activePiece, hoverCell, level, rotation, occupied]);
 
   const solved = useMemo(() => {
     const target = new Set(level.target.map(([row, col]) => cellKey(row, col)));
@@ -2088,41 +2244,47 @@ export default function App() {
   }, [level.target, occupied]);
 
   useEffect(() => {
-    if (solved && !isDailyChallenge && !isHistoryReplay && !save.completed.includes(level.id)) {
+    if (solved && !settings.practiceMode && !isDailyChallenge && !isHistoryReplay && !save.completed.includes(level.id)) {
       setSave((current) => ({ ...current, completed: [...current.completed, level.id] }));
     }
-  }, [level.id, save.completed, solved, isDailyChallenge, isHistoryReplay]);
+  }, [level.id, save.completed, solved, isDailyChallenge, isHistoryReplay, settings.practiceMode]);
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
-      if (isDailyChallenge) {
-        const record = updateDailyRecord(stats);
-        setNewRecords({
-          newMinSteps: record.minSteps === stats.steps,
-          newMinRotations: record.minRotations === stats.rotations,
-          firstNoReset: false
-        });
-        setDailyRecord(record);
-        setDailyStreak(calculateStreak());
-        setDailyCalendarRefreshKey((key) => key + 1);
-      } else if (isHistoryReplay && historyReplayDate) {
-        const record = updateHistoryRecord(historyReplayDate, stats);
-        setNewRecords({
-          newMinSteps: record.historyMinSteps === stats.steps,
-          newMinRotations: record.historyMinRotations === stats.rotations,
-          firstNoReset: false
-        });
-        setHistoryReplayRecord(record);
-        setDailyCalendarRefreshKey((key) => key + 1);
+      if (!settings.practiceMode) {
+        if (isDailyChallenge) {
+          const record = updateDailyRecord(stats);
+          setNewRecords({
+            newMinSteps: record.minSteps === stats.steps,
+            newMinRotations: record.minRotations === stats.rotations,
+            firstNoReset: false,
+            firstCompletion: false
+          });
+          setDailyRecord(record);
+          setDailyStreak(calculateStreak());
+          setDailyCalendarRefreshKey((key) => key + 1);
+        } else if (isHistoryReplay && historyReplayDate) {
+          const record = updateHistoryRecord(historyReplayDate, stats);
+          setNewRecords({
+            newMinSteps: record.historyMinSteps === stats.steps,
+            newMinRotations: record.historyMinRotations === stats.rotations,
+            firstNoReset: false,
+            firstCompletion: false
+          });
+          setHistoryReplayRecord(record);
+          setDailyCalendarRefreshKey((key) => key + 1);
+        } else {
+          const { records } = updateAchievement(level.id, stats);
+          setNewRecords(records);
+        }
       } else {
-        const { records } = updateAchievement(level.id, stats);
-        setNewRecords(records);
+        setNewRecords({ newMinSteps: false, newMinRotations: false, firstNoReset: false, firstCompletion: false });
       }
       playSound("success");
       setShowComplete(true);
     }
     prevSolvedRef.current = solved;
-  }, [solved, isDailyChallenge, isHistoryReplay, historyReplayDate, level.id, stats]);
+  }, [solved, isDailyChallenge, isHistoryReplay, historyReplayDate, level.id, stats, settings.practiceMode]);
 
   function place(row: number, col: number) {
     if (!activePiece) return;
@@ -2146,6 +2308,9 @@ export default function App() {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
     resetHistory();
+    if (!levelId.startsWith(DAILY_CHALLENGE_LEVEL_ID) && !isHistoryReplayLevelId(levelId)) {
+      touchAchievementPlay(levelId);
+    }
     setSave((current) => ({
       ...current,
       levelId,
@@ -2363,7 +2528,7 @@ export default function App() {
           onSelectHistory={switchToHistoryReplay}
         />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
-        <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
+        <AchievementPanel open={achievementsOpen} levels={allLevels} workshopLevels={workshopLevels} dailyStreak={dailyStreak} onClose={() => setAchievementsOpen(false)} />
         <WorkshopPanel
           open={workshopOpen}
           onClose={() => setWorkshopOpen(false)}
@@ -2425,7 +2590,7 @@ export default function App() {
           <h1>{heroTitle}</h1>
         </div>
         <div className="game-header">
-          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""} ${isHistoryReplay ? "history-badge" : ""} ${isWorkshopLevel ? "workshop-badge" : ""}`}>
+          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""} ${isHistoryReplay ? "history-badge" : ""} ${isWorkshopLevel ? "workshop-badge" : ""} ${settings.practiceMode ? "practice-badge" : ""}`}>
             {isDailyChallenge
               ? "✦ "
               : isHistoryReplay
@@ -2434,7 +2599,16 @@ export default function App() {
               ? "✨ "
               : "当前："}
             {level.name}
+            {settings.practiceMode && <span className="practice-tag">· 练习模式</span>}
           </span>
+          <button
+            className={`practice-toggle-btn ${settings.practiceMode ? "active" : ""}`}
+            onClick={() => setSettings((s) => ({ ...s, practiceMode: !s.practiceMode }))}
+            title={settings.practiceMode ? "关闭练习模式" : "开启练习模式"}
+            aria-label={settings.practiceMode ? "关闭练习模式" : "开启练习模式"}
+          >
+            🧪 {settings.practiceMode ? "练习中" : "练习模式"}
+          </button>
           <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
             ⚙ 设置
           </button>
@@ -2548,7 +2722,15 @@ export default function App() {
               </div>
             </div>
           )}
-          <p ref={tutorialRefs.hint} className={solved ? "hint solved" : "hint"}>{solved ? "符文已闭合，关卡完成。" : "选择碎片后点击棋盘放置，已放下的碎片可用重置清空。"}</p>
+          <p ref={tutorialRefs.hint} className={`${solved ? "hint solved" : "hint"} ${settings.practiceMode ? "practice-hint" : ""}`}>
+            {solved
+              ? settings.practiceMode
+                ? "练习完成。切换到普通模式可记录成就。"
+                : "符文已闭合，关卡完成。"
+              : settings.practiceMode
+              ? "🧪 练习模式：悬停预览落点，完成不计入成就。"
+              : "选择碎片后点击棋盘放置，已放下的碎片可用重置清空。"}
+          </p>
         </div>
 
         <aside className="panel">
@@ -2600,6 +2782,7 @@ export default function App() {
         onNext={nextLevel}
         onBackToHall={backToHall}
         isHistoryReplay={isHistoryReplay}
+        isPracticeMode={settings.practiceMode}
       />
 
       <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
