@@ -34,6 +34,10 @@
   --color-shadow-strong: rgba(0, 0, 0, 0.32);
   --color-tutorial-mask: rgba(0, 0, 0, 0.65);
   --color-overlay-glow: rgba(215, 184, 79, 0.55);
+  --color-gold: #f0c64b;
+  --color-gold-dark: #d4a82e;
+  --color-gold-soft: rgba(240, 198, 75, 0.4);
+  --color-gold-bg: rgba(240, 198, 75, 0.14);
 
   --grad-bg:
     linear-gradient(135deg, rgba(84, 160, 168, 0.18), transparent 38%),
@@ -84,6 +88,10 @@
   --color-shadow-strong: rgba(60, 40, 10, 0.2);
   --color-tutorial-mask: rgba(30, 20, 0, 0.55);
   --color-overlay-glow: rgba(176, 136, 40, 0.45);
+  --color-gold: #e0a820;
+  --color-gold-dark: #c28e10;
+  --color-gold-soft: rgba(224, 168, 32, 0.45);
+  --color-gold-bg: rgba(224, 168, 32, 0.12);
 
   --grad-bg:
     linear-gradient(135deg, rgba(120, 180, 170, 0.18), transparent 38%),
@@ -823,6 +831,55 @@ h1 {
   margin-bottom: 10px;
 }
 
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.favorite-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-fg-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  transition:
+    all calc(0.15s * var(--anim-duration-scale)) ease;
+  flex-shrink: 0;
+}
+
+.favorite-btn:hover {
+  border-color: var(--color-accent-soft);
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+  transform: scale(1.08);
+}
+
+.favorite-btn.favorited {
+  color: var(--color-gold);
+  border-color: var(--color-gold-soft);
+  background: var(--color-gold-bg);
+}
+
+.favorite-btn.favorited:hover {
+  color: var(--color-gold-dark);
+  transform: scale(1.08);
+}
+
+.level-card.favorite-card {
+  border-color: var(--color-gold-soft);
+  box-shadow: 0 12px 40px var(--color-shadow), 0 0 0 1px var(--color-gold-soft) inset;
+}
+
 .level-index {
   font-size: 0.85rem;
   font-weight: 900;
@@ -1103,6 +1160,89 @@ h1 {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-wrap: wrap;
+}
+
+.hall-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--color-fg-dim);
+  pointer-events: none;
+}
+
+.search-icon::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 2px;
+  background: var(--color-fg-dim);
+  bottom: -4px;
+  right: -3px;
+  transform: rotate(45deg);
+}
+
+.hall-search-input {
+  padding: 10px 36px 10px 40px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-fg);
+  font-size: 0.92rem;
+  font-weight: 600;
+  width: 240px;
+  transition:
+    border-color calc(0.15s * var(--anim-duration-scale)) ease,
+    box-shadow calc(0.15s * var(--anim-duration-scale)) ease;
+}
+
+.hall-search-input::placeholder {
+  color: var(--color-fg-dim);
+  font-weight: 500;
+}
+
+.hall-search-input:hover {
+  border-color: var(--color-accent-soft);
+}
+
+.hall-search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-bg-cell);
+  color: var(--color-fg-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  transition:
+    background calc(0.15s * var(--anim-duration-scale)) ease,
+    color calc(0.15s * var(--anim-duration-scale)) ease;
+}
+
+.search-clear-btn:hover {
+  background: var(--color-hint-misplaced-bg);
+  color: var(--color-hint-misplaced);
 }
 
 .tutorial-entry-btn,
@@ -1274,6 +1414,15 @@ h1 {
 
   .hall-actions {
     flex-wrap: wrap;
+  }
+
+  .hall-search-wrap {
+    width: 100%;
+    order: -1;
+  }
+
+  .hall-search-input {
+    width: 100%;
   }
 
   .filters-panel {

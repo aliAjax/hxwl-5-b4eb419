@@ -61,6 +61,7 @@ const storageKey = "hxwl-5-runes";
 const tutorialKey = "hxwl-5-runes-tutorial";
 const settingsKey = "hxwl-5-runes-settings";
 const achievementKey = "hxwl-5-runes-achievements";
+const favoritesKey = "hxwl-5-runes-favorites";
 
 type LevelRecord = {
   firstCompletedAt: string;
@@ -81,6 +82,31 @@ function loadAchievements(): Achievements {
 
 function saveAchievements(data: Achievements) {
   localStorage.setItem(achievementKey, JSON.stringify(data));
+}
+
+function loadFavorites(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavorites(favorites: string[]) {
+  localStorage.setItem(favoritesKey, JSON.stringify(favorites));
+}
+
+function toggleFavorite(levelId: string): string[] {
+  const favorites = loadFavorites();
+  const index = favorites.indexOf(levelId);
+  if (index >= 0) {
+    favorites.splice(index, 1);
+  } else {
+    favorites.push(levelId);
+  }
+  saveFavorites(favorites);
+  return favorites;
 }
 
 type NewRecords = {
@@ -486,13 +512,16 @@ type View = "hall" | "game";
 type CompletionFilter = "all" | "completed" | "uncompleted";
 type RecencyFilter = "all" | "recent";
 type SourceFilter = "all" | "preset" | "workshop";
+type FavoritesFilter = "all" | "favorites";
 type SortKey = "default" | "name-asc" | "name-desc" | "target-asc" | "target-desc";
 
 type HallFilters = {
   completion: CompletionFilter;
   recency: RecencyFilter;
   source: SourceFilter;
+  favorites: FavoritesFilter;
   sort: SortKey;
+  searchQuery: string;
 };
 
 type TutorialRefs = {
@@ -1079,7 +1108,9 @@ function LevelSelectHall({
   onDeleteLevel,
   onDuplicateLevel,
   onExportLevel,
-  onOpenImport
+  onOpenImport,
+  favorites,
+  onToggleFavorite
 }: {
   levels: Level[];
   workshopLevels: Level[];
@@ -1101,6 +1132,8 @@ function LevelSelectHall({
   onDuplicateLevel: (levelId: string) => void;
   onExportLevel: (levelId: string) => void;
   onOpenImport: () => void;
+  favorites: string[];
+  onToggleFavorite: (levelId: string) => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length + workshopLevels.length;
@@ -1120,6 +1153,17 @@ function LevelSelectHall({
 
   const displayedLevels = useMemo(() => {
     let result = [...allLevelsWithSource];
+
+    if (filters.searchQuery.trim()) {
+      const query = filters.searchQuery.trim().toLowerCase();
+      result = result.filter((l) =>
+        l.name.toLowerCase().includes(query)
+      );
+    }
+
+    if (filters.favorites === "favorites") {
+      result = result.filter((l) => favorites.includes(l.id));
+    }
 
     if (filters.completion === "completed") {
       result = result.filter((l) => save.completed.includes(l.id));
@@ -1159,39 +1203,62 @@ function LevelSelectHall({
     }
 
     return result;
-  }, [allLevelsWithSource, filters, save.completed, save.lastPlayed, recentCutoff]);
+  }, [allLevelsWithSource, filters, save.completed, save.lastPlayed, recentCutoff, favorites]);
 
   const updateFilter = <K extends keyof HallFilters>(key: K, value: HallFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 
   const clearAllFilters = () => {
-    onFiltersChange({ completion: "all", recency: "all", source: "all", sort: "default" });
+    onFiltersChange({
+      completion: "all",
+      recency: "all",
+      source: "all",
+      favorites: "all",
+      sort: "default",
+      searchQuery: ""
+    });
   };
 
   const hasActiveFilters =
     filters.completion !== "all" ||
     filters.recency !== "all" ||
     filters.source !== "all" ||
-    filters.sort !== "default";
+    filters.favorites !== "all" ||
+    filters.sort !== "default" ||
+    filters.searchQuery.trim() !== "";
 
   function renderLevelCard(item: LevelWithSource) {
     const isCompleted = save.completed.includes(item.id);
     const lastPlayed = save.lastPlayed[item.id];
     const isWorkshop = item.source === "workshop";
+    const isFavorite = favorites.includes(item.id);
     return (
       <div
-        className={`level-card ${isCompleted ? "completed" : ""} ${isWorkshop ? "workshop-card" : ""}`}
+        className={`level-card ${isCompleted ? "completed" : ""} ${isWorkshop ? "workshop-card" : ""} ${isFavorite ? "favorite-card" : ""}`}
         key={item.id}
       >
         <div className="card-clickable" onClick={() => onSelectLevel(item.id)}>
           <div className="card-header">
-            {item.source === "preset" && item.presetIndex !== undefined ? (
-              <span className="level-index">{String(item.presetIndex + 1).padStart(2, "0")}</span>
-            ) : (
-              <span className="workshop-level-tag">✨ 工坊</span>
-            )}
-            {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+            <div className="card-header-left">
+              {item.source === "preset" && item.presetIndex !== undefined ? (
+                <span className="level-index">{String(item.presetIndex + 1).padStart(2, "0")}</span>
+              ) : (
+                <span className="workshop-level-tag">✨ 工坊</span>
+              )}
+              {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+            </div>
+            <button
+              className={`favorite-btn ${isFavorite ? "favorited" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(item.id);
+              }}
+              title={isFavorite ? "取消收藏" : "收藏关卡"}
+              aria-label={isFavorite ? "取消收藏" : "收藏关卡"}
+            >
+              {isFavorite ? "★" : "☆"}
+            </button>
           </div>
           <h3 className="level-name">{item.name}</h3>
           <LevelPreview level={item} />
@@ -1273,6 +1340,26 @@ function LevelSelectHall({
           <h1>选择关卡</h1>
         </div>
         <div className="hall-actions">
+          <div className="hall-search-wrap">
+            <i className="search-icon" />
+            <input
+              className="hall-search-input"
+              type="text"
+              placeholder="搜索关卡名称…"
+              value={filters.searchQuery}
+              onChange={(e) => updateFilter("searchQuery", e.target.value)}
+              aria-label="搜索关卡"
+            />
+            {filters.searchQuery && (
+              <button
+                className="search-clear-btn"
+                onClick={() => updateFilter("searchQuery", "")}
+                aria-label="清除搜索"
+              >
+                ×
+              </button>
+            )}
+          </div>
           <button className="workshop-entry-btn" onClick={onOpenWorkshop}>
             ✨ 创作工坊
           </button>
@@ -1366,6 +1453,24 @@ function LevelSelectHall({
               onClick={() => updateFilter("source", "workshop")}
             >
               工坊关卡
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <span className="filter-label">收藏状态</span>
+          <div className="filter-chips">
+            <button
+              className={`filter-chip ${filters.favorites === "all" ? "active" : ""}`}
+              onClick={() => updateFilter("favorites", "all")}
+            >
+              全部
+            </button>
+            <button
+              className={`filter-chip ${filters.favorites === "favorites" ? "active" : ""}`}
+              onClick={() => updateFilter("favorites", "favorites")}
+            >
+              ★ 仅收藏
             </button>
           </div>
         </div>
@@ -1629,6 +1734,7 @@ export default function App() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [workshopOpen, setWorkshopOpen] = useState(false);
   const [workshopLevels, setWorkshopLevels] = useState<Level[]>(loadWorkshopLevels);
+  const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
@@ -1637,7 +1743,9 @@ export default function App() {
     completion: "all",
     recency: "all",
     source: "all",
-    sort: "default"
+    favorites: "all",
+    sort: "default",
+    searchQuery: ""
   });
   const [renameLevelId, setRenameLevelId] = useState<string | null>(null);
   const [deleteLevelId, setDeleteLevelId] = useState<string | null>(null);
@@ -1706,6 +1814,10 @@ export default function App() {
   useEffect(() => {
     saveWorkshopLevels(workshopLevels);
   }, [workshopLevels]);
+
+  useEffect(() => {
+    saveFavorites(favorites);
+  }, [favorites]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -2021,6 +2133,7 @@ export default function App() {
     const updated = deleteWorkshopLevel(levelId);
     setWorkshopLevels(updated);
     setSave(loadSave());
+    setFavorites((prev) => prev.filter((id) => id !== levelId));
     setDeleteLevelId(null);
   }
 
@@ -2034,6 +2147,11 @@ export default function App() {
     if (!level) return;
     const json = exportLevelToJson(level);
     copyToClipboard(json).catch(() => {});
+  }
+
+  function handleToggleFavorite(levelId: string) {
+    const newFavorites = toggleFavorite(levelId);
+    setFavorites(newFavorites);
   }
 
   function handleImportLevel(level: Level) {
@@ -2166,6 +2284,8 @@ export default function App() {
           onDuplicateLevel={handleDuplicateLevel}
           onExportLevel={handleExportLevel}
           onOpenImport={() => setImportDialogOpen(true)}
+          favorites={favorites}
+          onToggleFavorite={handleToggleFavorite}
         />
         <DailyCalendarPanel
           open={dailyCalendarOpen}
