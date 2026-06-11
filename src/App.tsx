@@ -2253,10 +2253,11 @@ export default function App() {
     if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
       if (!settings.practiceMode) {
         if (isDailyChallenge) {
+          const previousRecord = getDailyRecord();
           const record = updateDailyRecord(stats);
           setNewRecords({
-            newMinSteps: record.minSteps === stats.steps,
-            newMinRotations: record.minRotations === stats.rotations,
+            newMinSteps: stats.steps < previousRecord.minSteps,
+            newMinRotations: stats.rotations < previousRecord.minRotations,
             firstNoReset: false,
             firstCompletion: false
           });
@@ -2264,10 +2265,11 @@ export default function App() {
           setDailyStreak(calculateStreak());
           setDailyCalendarRefreshKey((key) => key + 1);
         } else if (isHistoryReplay && historyReplayDate) {
+          const previousRecord = getDailyRecord(historyReplayDate);
           const record = updateHistoryRecord(historyReplayDate, stats);
           setNewRecords({
-            newMinSteps: record.historyMinSteps === stats.steps,
-            newMinRotations: record.historyMinRotations === stats.rotations,
+            newMinSteps: stats.steps < previousRecord.historyMinSteps,
+            newMinRotations: stats.rotations < previousRecord.historyMinRotations,
             firstNoReset: false,
             firstCompletion: false
           });
