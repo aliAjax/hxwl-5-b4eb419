@@ -34,7 +34,7 @@ export function getTodayDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
-const NO_RECORD = 999999;
+export const NO_RECORD = 999999;
 
 function createEmptyRecord(): DailyChallengeRecord {
   return {
@@ -83,6 +83,51 @@ export function touchDailyPlayed() {
   const existing = normalizeRecord(save[date]);
   save[date] = { ...existing, lastPlayed: new Date().toISOString() };
   saveDailySave(save);
+}
+
+export type DailyRecordWithDate = {
+  date: string;
+  record: DailyChallengeRecord;
+};
+
+export function getDailyRecordsForDays(count: number): DailyRecordWithDate[] {
+  const save = loadDailySave();
+  const result: DailyRecordWithDate[] = [];
+  const today = new Date();
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = formatDateToString(d);
+    result.push({ date: dateStr, record: normalizeRecord(save[dateStr]) });
+  }
+  return result;
+}
+
+export function calculateStreak(): number {
+  const save = loadDailySave();
+  const today = getTodayDateString();
+  const todayRecord = normalizeRecord(save[today]);
+  let streak = 0;
+  const startDate = todayRecord.completed ? new Date() : new Date(new Date().setDate(new Date().getDate() - 1));
+  const d = new Date(startDate);
+  while (true) {
+    const dateStr = formatDateToString(d);
+    const record = normalizeRecord(save[dateStr]);
+    if (record.completed) {
+      streak += 1;
+      d.setDate(d.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function formatDateToString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function mulberry32(seed: number) {

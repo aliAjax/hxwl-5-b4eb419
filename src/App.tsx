@@ -5,8 +5,12 @@ import {
   updateDailyRecord,
   touchDailyPlayed,
   getTodayDateString,
+  calculateStreak,
+  getDailyRecordsForDays,
   DAILY_CHALLENGE_LEVEL_ID,
-  type DailyChallengeRecord
+  NO_RECORD,
+  type DailyChallengeRecord,
+  type DailyRecordWithDate
 } from "./dailyChallenge";
 import WorkshopPanel, { WORKSHOP_LEVEL_PREFIX } from "./WorkshopPanel";
 
@@ -868,12 +872,16 @@ function LevelPreview({ level }: { level: Level }) {
 
 function DailyChallengeCard({
   onSelect,
+  onOpenCalendar,
   dailyRecord,
-  todayDate
+  todayDate,
+  streak
 }: {
   onSelect: () => void;
+  onOpenCalendar: () => void;
   dailyRecord: DailyChallengeRecord;
   todayDate: string;
+  streak: number;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -891,7 +899,7 @@ function DailyChallengeCard({
   const countdownText = `${hours}小时${minutes}分后刷新`;
 
   return (
-    <button className="daily-challenge-card" onClick={onSelect}>
+    <div className="daily-challenge-card">
       <div className="daily-card-glow" />
       <div className="daily-card-content">
         <div className="daily-card-header">
@@ -933,15 +941,110 @@ function DailyChallengeCard({
                 最近游玩：{formatLastPlayed(dailyRecord.lastPlayed)}
               </span>
             )}
+            {streak > 0 && (
+              <span className="daily-streak">
+                🔥 连续完成 <strong>{streak}</strong> 天
+              </span>
+            )}
           </div>
         </div>
         <div className="daily-card-footer">
-          <span className="daily-cta">
+          <button className="daily-calendar-btn" onClick={(e) => { e.stopPropagation(); onOpenCalendar(); }}>
+            📅 挑战记录
+          </button>
+          <button className="daily-cta-btn" onClick={onSelect}>
             {dailyRecord.completed ? "再来一次 →" : "开始挑战 →"}
-          </span>
+          </button>
         </div>
       </div>
-    </button>
+    </div>
+  );
+}
+
+function DailyCalendarPanel({
+  open,
+  onClose,
+  streak
+}: {
+  open: boolean;
+  onClose: () => void;
+  streak: number;
+}) {
+  const [records] = useState<DailyRecordWithDate[]>(() => getDailyRecordsForDays(30));
+
+  if (!open) return null;
+
+  const completedDays = records.filter((r) => r.record.completed).length;
+  const playedDays = records.filter((r) => r.record.lastPlayed).length;
+
+  return (
+    <div className="daily-calendar-overlay" onClick={onClose}>
+      <div className="daily-calendar-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="daily-calendar-header">
+          <h2 className="daily-calendar-title">挑战日历</h2>
+          <button className="daily-calendar-close" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <div className="daily-calendar-summary">
+          <div className="calendar-summary-card">
+            <span className="calendar-summary-value streak-value">🔥 {streak}</span>
+            <span className="calendar-summary-label">连续天数</span>
+          </div>
+          <div className="calendar-summary-card">
+            <span className="calendar-summary-value">✓ {completedDays}</span>
+            <span className="calendar-summary-label">完成天数</span>
+          </div>
+          <div className="calendar-summary-card">
+            <span className="calendar-summary-value">🎮 {playedDays}</span>
+            <span className="calendar-summary-label">游玩天数</span>
+          </div>
+        </div>
+        <div className="daily-calendar-list">
+          {records.map(({ date, record }) => {
+            const isToday = date === getTodayDateString();
+            const hasData = record.completed || record.lastPlayed;
+            return (
+              <div
+                key={date}
+                className={`calendar-day-row ${record.completed ? "completed" : ""} ${isToday ? "today" : ""} ${!hasData ? "empty" : ""}`}
+              >
+                <div className="calendar-day-date">
+                  <span className="calendar-day-label">{date.slice(5)}</span>
+                  {isToday && <span className="calendar-today-badge">今天</span>}
+                </div>
+                <div className="calendar-day-status">
+                  {record.completed ? (
+                    <span className="calendar-status completed">✓ 完成</span>
+                  ) : record.lastPlayed ? (
+                    <span className="calendar-status played">已游玩</span>
+                  ) : (
+                    <span className="calendar-status none">—</span>
+                  )}
+                </div>
+                <div className="calendar-day-details">
+                  {record.completed && record.minSteps < NO_RECORD && (
+                    <span className="calendar-detail">
+                      步数 <strong>{record.minSteps}</strong>
+                    </span>
+                  )}
+                  {record.completed && record.minRotations < NO_RECORD && (
+                    <span className="calendar-detail">
+                      旋转 <strong>{record.minRotations}</strong>
+                    </span>
+                  )}
+                  {record.lastPlayed && (
+                    <span className="calendar-detail-time">
+                      {formatLastPlayed(record.lastPlayed)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -959,8 +1062,10 @@ function LevelSelectHall({
   onOpenAchievements,
   onOpenWorkshop,
   onSelectDaily,
+  onOpenCalendar,
   dailyRecord,
   todayDate,
+  streak,
   onRenameLevel,
   onDeleteLevel,
   onDuplicateLevel
@@ -976,8 +1081,10 @@ function LevelSelectHall({
   onOpenAchievements: () => void;
   onOpenWorkshop: () => void;
   onSelectDaily: () => void;
+  onOpenCalendar: () => void;
   dailyRecord: DailyChallengeRecord;
   todayDate: string;
+  streak: number;
   onRenameLevel: (levelId: string) => void;
   onDeleteLevel: (levelId: string) => void;
   onDuplicateLevel: (levelId: string) => void;
@@ -1164,8 +1271,10 @@ function LevelSelectHall({
 
       <DailyChallengeCard
         onSelect={onSelectDaily}
+        onOpenCalendar={onOpenCalendar}
         dailyRecord={dailyRecord}
         todayDate={todayDate}
+        streak={streak}
       />
 
       <div className="filters-panel">
@@ -1507,6 +1616,8 @@ export default function App() {
   const [renameLevelId, setRenameLevelId] = useState<string | null>(null);
   const [deleteLevelId, setDeleteLevelId] = useState<string | null>(null);
   const [hoverCell, setHoverCell] = useState<Cell | null>(null);
+  const [dailyCalendarOpen, setDailyCalendarOpen] = useState(false);
+  const [dailyStreak, setDailyStreak] = useState(() => calculateStreak());
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
@@ -1803,6 +1914,7 @@ export default function App() {
           firstNoReset: false
         });
         setDailyRecord(record);
+        setDailyStreak(calculateStreak());
       } else {
         const { records } = updateAchievement(level.id, stats);
         setNewRecords(records);
@@ -1853,6 +1965,7 @@ export default function App() {
   function switchToDailyChallenge() {
     touchDailyPlayed();
     setDailyRecord(getDailyRecord());
+    setDailyStreak(calculateStreak());
     switchLevel(DAILY_CHALLENGE_LEVEL_ID);
   }
 
@@ -1997,12 +2110,15 @@ export default function App() {
           onOpenAchievements={() => setAchievementsOpen(true)}
           onOpenWorkshop={() => setWorkshopOpen(true)}
           onSelectDaily={switchToDailyChallenge}
+          onOpenCalendar={() => setDailyCalendarOpen(true)}
           dailyRecord={dailyRecord}
           todayDate={todayDate}
+          streak={dailyStreak}
           onRenameLevel={(id) => setRenameLevelId(id)}
           onDeleteLevel={(id) => setDeleteLevelId(id)}
           onDuplicateLevel={handleDuplicateLevel}
         />
+        <DailyCalendarPanel open={dailyCalendarOpen} onClose={() => setDailyCalendarOpen(false)} streak={dailyStreak} />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
         <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
         <WorkshopPanel
