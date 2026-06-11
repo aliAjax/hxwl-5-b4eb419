@@ -1506,6 +1506,7 @@ export default function App() {
   });
   const [renameLevelId, setRenameLevelId] = useState<string | null>(null);
   const [deleteLevelId, setDeleteLevelId] = useState<string | null>(null);
+  const [hoverCell, setHoverCell] = useState<Cell | null>(null);
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
@@ -1763,6 +1764,26 @@ export default function App() {
     return map;
   }, [level, save.placements]);
 
+  type PreviewCell = { valid: boolean; color: string };
+  const previewCells = useMemo<Map<string, PreviewCell>>(() => {
+    const result = new Map<string, PreviewCell>();
+    if (!activePiece || !hoverCell) return result;
+    const piece = level.pieces.find((item) => item.id === activePiece);
+    if (!piece) return result;
+    const [hoverRow, hoverCol] = hoverCell;
+    const rotatedCells = rotate(piece.cells, rotation);
+    for (const [dr, dc] of rotatedCells) {
+      const r = hoverRow + dr;
+      const c = hoverCol + dc;
+      const outOfBounds = r < 0 || c < 0 || r >= level.size || c >= level.size;
+      const collision = !outOfBounds && occupied.has(cellKey(r, c));
+      const valid = !outOfBounds && !collision;
+      if (outOfBounds) continue;
+      result.set(cellKey(r, c), { valid, color: piece.color });
+    }
+    return result;
+  }, [activePiece, hoverCell, level, rotation, occupied]);
+
   const solved = useMemo(() => {
     const target = new Set(level.target.map(([row, col]) => cellKey(row, col)));
     if (occupied.size !== target.size) return false;
@@ -1810,6 +1831,7 @@ export default function App() {
     playSound("place");
     setActivePiece(null);
     setRotation(0);
+    setHoverCell(null);
   }
 
   function switchLevel(levelId: string) {
@@ -1827,6 +1849,7 @@ export default function App() {
     setStats({ steps: 0, rotations: 0, resets: 0 });
     setShowComplete(false);
     setShowHint(false);
+    setHoverCell(null);
     setView("game");
   }
 
@@ -1873,6 +1896,7 @@ export default function App() {
     setRotation(0);
     setShowComplete(false);
     setShowHint(false);
+    setHoverCell(null);
   }
 
   function handleSetActivePiece(id: string) {
@@ -1880,6 +1904,7 @@ export default function App() {
       captureState();
     }
     setActivePiece(id);
+    setHoverCell(null);
     playSound("select");
   }
 
@@ -1898,6 +1923,7 @@ export default function App() {
     hasInteractionRef.current = true;
     setSave((current) => ({ ...current, placements: [] }));
     setStats((s) => ({ ...s, resets: s.resets + 1 }));
+    setHoverCell(null);
     playSound("reset");
   }
 
@@ -2062,18 +2088,54 @@ export default function App() {
               const isTarget = targetSet.has(key);
               const isMissingTarget = showHint && missingTargetSet.has(key);
               const isMisplaced = showHint && misplacedSet.has(key);
+              const preview = previewCells.get(key);
+              const isPreview = !!preview;
+              const isPreviewValid = preview?.valid ?? false;
               const classes = [
                 isTarget ? `target${settings.highlightTarget ? "" : " no-highlight"}` : "",
                 isMissingTarget ? "hint-missing" : "",
-                isMisplaced ? "hint-misplaced" : ""
+                isMisplaced ? "hint-misplaced" : "",
+                isPreview ? (isPreviewValid ? "preview-valid" : "preview-invalid") : ""
               ].filter(Boolean).join(" ");
               return (
                 <button
                   className={classes}
                   key={key}
                   onClick={() => place(row, col)}
+                  onMouseEnter={() => activePiece && setHoverCell([row, col])}
+                  onMouseLeave={() => setHoverCell(null)}
+                  onTouchStart={(e) => {
+                    if (!activePiece) return;
+                    const touch = e.touches[0];
+                    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                    const btn = element?.closest("button");
+                    if (btn) {
+                      const idx = Array.from(btn.parentElement?.children ?? []).indexOf(btn);
+                      if (idx >= 0) {
+                        const r = Math.floor(idx / level.size);
+                        const c = idx % level.size;
+                        setHoverCell([r, c]);
+                      }
+                    }
+                  }}
+                  onTouchMove={(e) => {
+                    if (!activePiece) return;
+                    const touch = e.touches[0];
+                    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                    const btn = element?.closest("button");
+                    if (btn) {
+                      const idx = Array.from(btn.parentElement?.children ?? []).indexOf(btn);
+                      if (idx >= 0) {
+                        const r = Math.floor(idx / level.size);
+                        const c = idx % level.size;
+                        setHoverCell([r, c]);
+                      }
+                    }
+                  }}
+                  onTouchEnd={() => setHoverCell(null)}
                 >
                   {occupied.has(key) && <i style={{ background: occupied.get(key) }} />}
+                  {isPreview && !occupied.has(key) && <i className={`preview-layer ${isPreviewValid ? "valid" : "invalid"}`} style={isPreviewValid ? { background: preview!.color } : undefined} />}
                 </button>
               );
             })}

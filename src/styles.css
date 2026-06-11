@@ -224,6 +224,22 @@ h1 {
   box-shadow: none;
 }
 
+.board button.preview-valid {
+  transform: scale(calc(1.02 + 0.03 * var(--anim-opacity)));
+  z-index: 2;
+}
+
+.board button.preview-invalid {
+  animation: preview-shake calc(0.3s * var(--anim-duration-scale)) ease;
+  z-index: 2;
+}
+
+@keyframes preview-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
 .board i {
   display: block;
   width: 100%;
@@ -234,6 +250,45 @@ h1 {
     transform calc(0.25s * var(--anim-duration-scale)) cubic-bezier(0.34, 1.56, 0.64, 1),
     opacity calc(0.2s * var(--anim-duration-scale)) ease;
   opacity: var(--anim-opacity);
+}
+
+.board i.preview-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.board i.preview-layer.valid {
+  opacity: calc(0.45 * var(--anim-opacity));
+  box-shadow:
+    inset 0 0 0 2px currentColor,
+    0 0 calc(12px * var(--anim-opacity)) currentColor;
+  animation: preview-pulse-valid calc(0.8s * var(--anim-duration-scale)) ease-in-out infinite;
+}
+
+.board i.preview-layer.invalid {
+  background: var(--color-hint-misplaced);
+  opacity: calc(0.5 * var(--anim-opacity));
+  box-shadow:
+    inset 0 0 0 2px var(--color-hint-misplaced),
+    0 0 calc(12px * var(--anim-opacity)) var(--color-hint-misplaced-soft);
+  animation: preview-pulse-invalid calc(0.5s * var(--anim-duration-scale)) ease-in-out infinite;
+}
+
+@keyframes preview-pulse-valid {
+  0%, 100% { opacity: calc(0.4 * var(--anim-opacity)); }
+  50% { opacity: calc(0.6 * var(--anim-opacity)); }
+}
+
+@keyframes preview-pulse-invalid {
+  0%, 100% { opacity: calc(0.45 * var(--anim-opacity)); }
+  50% { opacity: calc(0.65 * var(--anim-opacity)); }
+}
+
+.board button {
+  position: relative;
+  overflow: visible;
 }
 
 .hint {
