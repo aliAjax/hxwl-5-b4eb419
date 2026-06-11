@@ -8,6 +8,7 @@ import {
   DAILY_CHALLENGE_LEVEL_ID,
   type DailyChallengeRecord
 } from "./dailyChallenge";
+import WorkshopPanel, { WORKSHOP_LEVEL_PREFIX } from "./WorkshopPanel";
 
 export type Cell = [number, number];
 
@@ -934,27 +935,31 @@ function DailyChallengeCard({
 
 function LevelSelectHall({
   levels,
+  workshopLevels,
   save,
   onSelectLevel,
   onOpenTutorial,
   onOpenSettings,
   onOpenAchievements,
+  onOpenWorkshop,
   onSelectDaily,
   dailyRecord,
   todayDate
 }: {
   levels: Level[];
+  workshopLevels: Level[];
   save: Save;
   onSelectLevel: (levelId: string) => void;
   onOpenTutorial: () => void;
   onOpenSettings: () => void;
   onOpenAchievements: () => void;
+  onOpenWorkshop: () => void;
   onSelectDaily: () => void;
   dailyRecord: DailyChallengeRecord;
   todayDate: string;
 }) {
   const completedCount = save.completed.length;
-  const totalCount = levels.length;
+  const totalCount = levels.length + workshopLevels.length;
 
   return (
     <section className="level-hall">
@@ -964,6 +969,9 @@ function LevelSelectHall({
           <h1>选择关卡</h1>
         </div>
         <div className="hall-actions">
+          <button className="workshop-entry-btn" onClick={onOpenWorkshop}>
+            ✨ 创作工坊
+          </button>
           <button className="achievement-btn" onClick={onOpenAchievements}>
             🏆 成就
           </button>
@@ -986,6 +994,9 @@ function LevelSelectHall({
         todayDate={todayDate}
       />
 
+      <div className="level-section-header">
+        <h2 className="level-section-title">预设关卡</h2>
+      </div>
       <div className="level-cards">
         {levels.map((item, index) => {
           const isCompleted = save.completed.includes(item.id);
@@ -1023,6 +1034,54 @@ function LevelSelectHall({
           );
         })}
       </div>
+
+      {workshopLevels.length > 0 && (
+        <>
+          <div className="level-section-header">
+            <h2 className="level-section-title">
+              <span className="workshop-level-tag">✨ 工坊</span>
+              自创关卡（{workshopLevels.length}）
+            </h2>
+          </div>
+          <div className="level-cards">
+            {workshopLevels.map((item) => {
+              const isCompleted = save.completed.includes(item.id);
+              const lastPlayed = save.lastPlayed[item.id];
+              return (
+                <button
+                  className={`level-card ${isCompleted ? "completed" : ""}`}
+                  key={item.id}
+                  onClick={() => onSelectLevel(item.id)}
+                >
+                  <div className="card-header">
+                    <span className="workshop-level-tag">工坊</span>
+                    {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+                  </div>
+                  <h3 className="level-name">{item.name}</h3>
+                  <LevelPreview level={item} />
+                  <div className="level-meta">
+                    <span className="meta-item">
+                      <i className="meta-icon board-icon" />
+                      {item.size}×{item.size} 棋盘
+                    </span>
+                    <span className="meta-item">
+                      <i className="meta-icon piece-icon" />
+                      {item.pieces.length} 个碎片
+                    </span>
+                  </div>
+                  <div className="level-footer">
+                    <span className="last-played">
+                      <i className="meta-icon clock-icon" />
+                      {formatLastPlayed(lastPlayed)}
+                    </span>
+                    <span className="enter-arrow">开始 →</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -1033,6 +1092,25 @@ function loadTutorialCompleted(): boolean {
   } catch {
     return false;
   }
+}
+
+const WORKSHOP_STORAGE_KEY = "hxwl-5-workshop-levels";
+
+function loadWorkshopLevels(): Level[] {
+  try {
+    const raw = localStorage.getItem(WORKSHOP_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Level[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkshopLevels(levels: Level[]) {
+  try {
+    localStorage.setItem(WORKSHOP_STORAGE_KEY, JSON.stringify(levels));
+  } catch {}
 }
 
 export default function App() {
@@ -1048,17 +1126,25 @@ export default function App() {
   const [showComplete, setShowComplete] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
+  const [workshopLevels, setWorkshopLevels] = useState<Level[]>(loadWorkshopLevels);
   const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
   const [dailyRecord, setDailyRecord] = useState<DailyChallengeRecord>(() => getDailyRecord());
+  const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
+  const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
   const level: Level = useMemo(() => {
     if (isDailyChallenge) {
       return dailyChallengeLevel;
     }
+    if (isWorkshopLevel) {
+      const found = workshopLevels.find((item) => item.id === save.levelId);
+      if (found) return found;
+    }
     return levels.find((item) => item.id === save.levelId) ?? levels[0];
-  }, [isDailyChallenge, dailyChallengeLevel, save.levelId]);
+  }, [isDailyChallenge, isWorkshopLevel, dailyChallengeLevel, workshopLevels, save.levelId]);
 
   useEffect(() => {
     function checkDateChange() {
@@ -1100,6 +1186,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(settingsKey, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    saveWorkshopLevels(workshopLevels);
+  }, [workshopLevels]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1372,6 +1462,16 @@ export default function App() {
     switchLevel(DAILY_CHALLENGE_LEVEL_ID);
   }
 
+  function playWorkshopLevel(newLevel: Level) {
+    setWorkshopLevels((current) => {
+      const exists = current.some((l) => l.id === newLevel.id);
+      if (exists) return current;
+      return [newLevel, ...current].slice(0, 20);
+    });
+    setWorkshopOpen(false);
+    switchLevel(newLevel.id);
+  }
+
   function backToHall() {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
@@ -1472,31 +1572,53 @@ export default function App() {
       <main className="runes">
         <LevelSelectHall
           levels={levels}
+          workshopLevels={workshopLevels}
           save={save}
           onSelectLevel={switchLevel}
           onOpenTutorial={openTutorial}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAchievements={() => setAchievementsOpen(true)}
+          onOpenWorkshop={() => setWorkshopOpen(true)}
           onSelectDaily={switchToDailyChallenge}
           dailyRecord={dailyRecord}
           todayDate={todayDate}
         />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
-        <AchievementPanel open={achievementsOpen} levels={levels} onClose={() => setAchievementsOpen(false)} />
+        <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
+        <WorkshopPanel
+          open={workshopOpen}
+          onClose={() => setWorkshopOpen(false)}
+          onPlayLevel={playWorkshopLevel}
+        />
       </main>
     );
   }
+
+  const levelTag = isDailyChallenge
+    ? "✦ 每日挑战"
+    : isWorkshopLevel
+    ? "✨ 工坊关卡"
+    : "符文拼接室";
+  const heroTitle = isDailyChallenge
+    ? `今日符文：${todayDate}`
+    : isWorkshopLevel
+    ? `挑战自创：${level.name}`
+    : "把碎片压进发光的格子";
 
   return (
     <main className="runes">
       <section className="hero">
         <div>
-          <p className="eyebrow">{isDailyChallenge ? "✦ 每日挑战" : "符文拼接室"}</p>
-          <h1>{isDailyChallenge ? `今日符文：${todayDate}` : "把碎片压进发光的格子"}</h1>
+          <p className="eyebrow">{levelTag}</p>
+          <h1>{heroTitle}</h1>
         </div>
         <div className="game-header">
-          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""}`}>
-            {isDailyChallenge ? "✦ " : "当前："}
+          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""} ${isWorkshopLevel ? "workshop-badge" : ""}`}>
+            {isDailyChallenge
+              ? "✦ "
+              : isWorkshopLevel
+              ? "✨ "
+              : "当前："}
             {level.name}
           </span>
           <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
