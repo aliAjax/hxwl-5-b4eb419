@@ -10,7 +10,9 @@ export type ImportValidationResult = {
 
 function isCell(value: unknown): value is Cell {
   if (!Array.isArray(value) || value.length !== 2) return false;
-  return typeof value[0] === "number" && typeof value[1] === "number";
+  if (typeof value[0] !== "number" || typeof value[1] !== "number") return false;
+  if (!Number.isInteger(value[0]) || !Number.isInteger(value[1])) return false;
+  return true;
 }
 
 function isPiece(value: unknown): value is Piece {
@@ -32,8 +34,121 @@ function normalizeCells(cells: Cell[]): Cell[] {
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
+function rotateCells(cells: Cell[], turns: number): Cell[] {
+  let next = cells;
+  for (let i = 0; i < turns % 4; i += 1) {
+    next = next.map(([row, col]) => [col, -row] as Cell);
+  }
+  return normalizeCells(next);
+}
+
 function cellKey(r: number, c: number): string {
   return `${r}:${c}`;
+}
+
+function canCoverTarget(size: number, target: Cell[], pieces: Piece[]): { canCover: boolean; reason?: string } {
+  const targetSet = new Set(target.map(([r, c]) => cellKey(r, c)));
+  const targetArea = targetSet.size;
+
+  const pieceVariants = pieces.map((p) => {
+    const variants: Cell[][] = [];
+    const seen = new Set<string>();
+    for (let r = 0; r < 4; r += 1) {
+      const rotated = rotateCells(p.cells, r);
+      const sig = rotated.map(([rr, cc]) => `${rr},${cc}`).join("|");
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        variants.push(rotated);
+      }
+    }
+    return variants;
+  });
+
+  const used = new Array(pieces.length).fill(false);
+  const covered = new Set<string>();
+  let timeout = false;
+  const startTime = Date.now();
+  const TIME_LIMIT_MS = 2000;
+
+  function backtrack(): boolean {
+    if (Date.now() - startTime > TIME_LIMIT_MS) {
+      timeout = true;
+      return true;
+    }
+    if (covered.size === targetArea) {
+      return true;
+    }
+
+    let firstUncoveredKey: string | null = null;
+    for (const k of targetSet) {
+      if (!covered.has(k)) {
+        firstUncoveredKey = k;
+        break;
+      }
+    }
+    if (!firstUncoveredKey) return true;
+    const [tr, tc] = firstUncoveredKey.split(":").map(Number);
+
+    for (let pi = 0; pi < pieces.length; pi += 1) {
+      if (used[pi]) continue;
+      used[pi] = true;
+
+      const variants = pieceVariants[pi];
+      for (const variant of variants) {
+        for (let vi = 0; vi < variant.length; vi += 1) {
+          const [dr, dc] = variant[vi];
+          const br = tr - dr;
+          const bc = tc - dc;
+
+          if (br < 0 || bc < 0) continue;
+
+          let valid = true;
+          const placements: string[] = [];
+          for (const [ddr, ddc] of variant) {
+            const r = br + ddr;
+            const c = bc + ddc;
+            if (r < 0 || r >= size || c < 0 || c >= size) {
+              valid = false;
+              break;
+            }
+            const k = cellKey(r, c);
+            if (!targetSet.has(k)) {
+              valid = false;
+              break;
+            }
+            if (covered.has(k)) {
+              valid = false;
+              break;
+            }
+            placements.push(k);
+          }
+          if (!valid) continue;
+
+          for (const k of placements) covered.add(k);
+          if (backtrack()) return true;
+          for (const k of placements) covered.delete(k);
+        }
+      }
+
+      used[pi] = false;
+    }
+
+    return false;
+  }
+
+  if (pieces.length <= 8 && targetArea <= 36) {
+    try {
+      const result = backtrack();
+      if (timeout) {
+        return { canCover: true, reason: "验证超时，跳过穷举（面积已匹配）" };
+      }
+      if (result) return { canCover: true };
+    } catch {}
+  } else {
+    return { canCover: true, reason: "规模较大，跳过穷举验证（面积已匹配）" };
+  }
+
+  return { canCover: false, reason: "穷举验证后无法完全覆盖目标格" };
 }
 
 export function exportLevelToJson(level: Level): string {
@@ -82,6 +197,8 @@ export function validateAndImportLevel(jsonStr: string): ImportValidationResult 
 
   if (typeof data.size !== "number") {
     errors.push("缺少或无效的棋盘大小 (size)");
+  } else if (!Number.isInteger(data.size)) {
+    errors.push(`棋盘大小必须是整数，当前为 ${data.size}`);
   } else if (data.size < 3 || data.size > 12) {
     errors.push(`棋盘大小必须在 3-12 之间，当前为 ${data.size}`);
   }
@@ -161,7 +278,25 @@ export function validateAndImportLevel(jsonStr: string): ImportValidationResult 
       continue;
     }
 
-    const normalized = normalizeCells(rawPiece.cells);
+    const pieceCellSet = new Set<string>();
+    const deduplicatedCells: Cell[] = [];
+    let hasDuplicate = false;
+    for (const cell of rawPiece.cells) {
+      const k = cellKey(cell[0], cell[1]);
+      if (pieceCellSet.has(k)) {
+        hasDuplicate = true;
+      } else {
+        pieceCellSet.add(k);
+        deduplicatedCells.push(cell);
+      }
+    }
+    if (hasDuplicate) {
+      warnings.push(
+        `碎片 "${rawPiece.name}" 内部存在重复格子，声明面积 ${rawPiece.cells.length}，实际面积 ${pieceCellSet.size}，已自动去重`
+      );
+    }
+
+    const normalized = normalizeCells(deduplicatedCells);
     const maxR = Math.max(...normalized.map(([r]) => r));
     const maxC = Math.max(...normalized.map(([, c]) => c));
     if (maxR >= size || maxC >= size) {
@@ -182,19 +317,26 @@ export function validateAndImportLevel(jsonStr: string): ImportValidationResult 
   }
 
   if (target.length > 0 && pieces.length > 0) {
-    if (totalPieceArea < target.length) {
+    if (totalPieceArea !== target.length) {
       errors.push(
-        `碎片总面积 (${totalPieceArea}) 小于目标格数量 (${target.length})，无法覆盖目标`
-      );
-    } else if (totalPieceArea > target.length) {
-      warnings.push(
-        `碎片总面积 (${totalPieceArea}) 大于目标格数量 (${target.length})，可能有多解或部分碎片无用`
+        `碎片总面积 (${totalPieceArea}) 与目标格数量 (${target.length}) 不相等，必须完全一致`
       );
     }
   }
 
   if (errors.length > 0) {
     return { valid: false, errors, warnings, level: null };
+  }
+
+  if (target.length > 0 && pieces.length > 0) {
+    const coverResult = canCoverTarget(size, target, pieces);
+    if (!coverResult.canCover) {
+      errors.push(
+        `目标覆盖校验失败：${coverResult.reason || "碎片无法完全覆盖目标格"}`
+      );
+    } else if (coverResult.reason) {
+      warnings.push(`覆盖关系：${coverResult.reason}`);
+    }
   }
 
   const levelId = `${WORKSHOP_LEVEL_PREFIX}import-${Date.now()}`;
