@@ -964,13 +964,20 @@ function DailyChallengeCard({
 function DailyCalendarPanel({
   open,
   onClose,
+  todayDate,
+  refreshKey,
   streak
 }: {
   open: boolean;
   onClose: () => void;
+  todayDate: string;
+  refreshKey: number;
   streak: number;
 }) {
-  const [records] = useState<DailyRecordWithDate[]>(() => getDailyRecordsForDays(30));
+  const records = useMemo<DailyRecordWithDate[]>(() => {
+    if (!open) return [];
+    return getDailyRecordsForDays(30);
+  }, [open, todayDate, refreshKey]);
 
   if (!open) return null;
 
@@ -1002,7 +1009,7 @@ function DailyCalendarPanel({
         </div>
         <div className="daily-calendar-list">
           {records.map(({ date, record }) => {
-            const isToday = date === getTodayDateString();
+            const isToday = date === todayDate;
             const hasData = record.completed || record.lastPlayed;
             return (
               <div
@@ -1618,6 +1625,7 @@ export default function App() {
   const [hoverCell, setHoverCell] = useState<Cell | null>(null);
   const [dailyCalendarOpen, setDailyCalendarOpen] = useState(false);
   const [dailyStreak, setDailyStreak] = useState(() => calculateStreak());
+  const [dailyCalendarRefreshKey, setDailyCalendarRefreshKey] = useState(0);
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
@@ -1639,6 +1647,8 @@ export default function App() {
         setTodayDate(newDate);
         setDailyChallengeLevel(generateDailyChallenge(newDate));
         setDailyRecord(getDailyRecord(newDate));
+        setDailyStreak(calculateStreak());
+        setDailyCalendarRefreshKey((key) => key + 1);
       }
     }
     const interval = setInterval(checkDateChange, 60000);
@@ -1915,6 +1925,7 @@ export default function App() {
         });
         setDailyRecord(record);
         setDailyStreak(calculateStreak());
+        setDailyCalendarRefreshKey((key) => key + 1);
       } else {
         const { records } = updateAchievement(level.id, stats);
         setNewRecords(records);
@@ -1966,6 +1977,7 @@ export default function App() {
     touchDailyPlayed();
     setDailyRecord(getDailyRecord());
     setDailyStreak(calculateStreak());
+    setDailyCalendarRefreshKey((key) => key + 1);
     switchLevel(DAILY_CHALLENGE_LEVEL_ID);
   }
 
@@ -2118,7 +2130,13 @@ export default function App() {
           onDeleteLevel={(id) => setDeleteLevelId(id)}
           onDuplicateLevel={handleDuplicateLevel}
         />
-        <DailyCalendarPanel open={dailyCalendarOpen} onClose={() => setDailyCalendarOpen(false)} streak={dailyStreak} />
+        <DailyCalendarPanel
+          open={dailyCalendarOpen}
+          onClose={() => setDailyCalendarOpen(false)}
+          todayDate={todayDate}
+          refreshKey={dailyCalendarRefreshKey}
+          streak={dailyStreak}
+        />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
         <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
         <WorkshopPanel
