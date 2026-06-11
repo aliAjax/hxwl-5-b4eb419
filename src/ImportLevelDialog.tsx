@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Level } from "./App";
+import type { Level } from "./types";
 import {
   validateAndImportLevel,
   copyToClipboard,

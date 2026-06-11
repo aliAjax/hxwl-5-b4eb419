@@ -3,7 +3,7 @@ import {
   validateAndImportLevel,
   exportLevelToJson
 } from "./levelImportExport";
-import type { Cell, Level, Piece } from "./App";
+import type { Cell, Level, Piece } from "./types";
 
 function createValidLevel(overrides: Partial<Level> = {}): Level {
   const target: Cell[] = [
@@ -40,7 +40,7 @@ function levelToJson(level: Level): string {
     name: level.name,
     size: level.size,
     target: level.target,
-    pieces: level.pieces.map((p) => ({
+    pieces: level.pieces.map((p: Piece) => ({
       id: p.id,
       name: p.name,
       color: p.color,

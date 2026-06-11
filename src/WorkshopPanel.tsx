@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Cell, Level, Piece } from "./App";
+import type { Level, Piece } from "./types";
 import {
   generateWorkshopLevel,
   type ColorPalette,
@@ -9,6 +9,7 @@ import {
   WORKSHOP_LEVEL_PREFIX
 } from "./levelGenerator";
 import { exportLevelToJson, copyToClipboard} from "./levelImportExport";
+import { cellKey } from "./boardUtils";
 
 const PALETTE_PREVIEWS: Record<ColorPalette, string[]> = {
   classic: ["#54a0a8", "#d09b4c", "#c96161", "#7c70c7", "#df6f52"],
@@ -31,10 +32,6 @@ const COMPLEXITY_LABELS: Record<Complexity, { name: string; desc: string }> = {
   normal: { name: "进阶", desc: "面积适中，需要思考" },
   complex: { name: "大师", desc: "大面积目标，高挑战" }
 };
-
-function cellKey(row: number, col: number) {
-  return `${row}:${col}`;
-}
 
 function MiniPreview({ level }: { level: Level | null }) {
   if (!level) {

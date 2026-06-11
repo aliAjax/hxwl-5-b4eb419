@@ -1,4 +1,5 @@
-import type { Cell, Level, Piece, Stats } from "./App";
+import type { Cell, Level, Piece, Stats } from "./types";
+import { rotateCells } from "./boardUtils";
 
 const DAILY_CHALLENGE_KEY = "hxwl-5-daily-challenge";
 
@@ -252,17 +253,6 @@ const PIECE_NAMES = [
   "雷符",
   "泽符"
 ];
-
-function rotateCells(cells: Cell[], turns: number): Cell[] {
-  let next = cells;
-  for (let i = 0; i < turns % 4; i += 1) {
-    next = next.map(([row, col]) => [col, -row]);
-    const minRow = Math.min(...next.map(([row]) => row));
-    const minCol = Math.min(...next.map(([, col]) => col));
-    next = next.map(([row, col]) => [row - minRow, col - minCol]);
-  }
-  return next;
-}
 
 export function generateDailyChallenge(dateStr?: string, isHistoryReplay: boolean = false): Level {
   const date = dateStr ?? getTodayDateString();

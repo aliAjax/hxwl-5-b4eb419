@@ -1,4 +1,5 @@
-import type { Cell, Level, Piece, Placement } from "./App";
+import type { Cell, Level, Piece, Placement } from "./types";
+import { cellKey, parseKey, rotateCells } from "./boardUtils";
 
 export type SolverStatus = "idle" | "solving" | "solved" | "unsolvable" | "timeout" | "error";
 
@@ -20,7 +21,7 @@ export type HintResult = {
 
 type PieceVariant = {
   pieceId: string;
-  cells: Cell[];
+  cells: import("./types").Cell[];
   rotation: number;
 };
 
@@ -33,25 +34,6 @@ type SolverState = {
 
 const solverCache = new Map<string, SolverResult>();
 const hintCache = new Map<string, HintResult>();
-
-function cellKey(row: number, col: number): string {
-  return `${row}:${col}`;
-}
-
-function parseKey(key: string): Cell {
-  const [r, c] = key.split(":").map(Number);
-  return [r, c];
-}
-
-function rotateCells(cells: Cell[], turns: number): Cell[] {
-  let next = cells;
-  for (let i = 0; i < turns % 4; i += 1) {
-    next = next.map(([row, col]) => [col, -row] as Cell);
-  }
-  const minRow = Math.min(...next.map(([r]) => r));
-  const minCol = Math.min(...next.map(([c]) => c));
-  return next.map(([r, c]) => [r - minRow, c - minCol] as Cell);
-}
 
 function getPieceVariants(piece: Piece): PieceVariant[] {
   const variants: PieceVariant[] = [];

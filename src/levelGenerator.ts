@@ -1,4 +1,5 @@
-import type { Cell, Level, Piece } from "./App";
+import type { Cell, Level, Piece } from "./types";
+import { cellKey, parseKey, rotateCells, normalizeCells, cellsSignature } from "./boardUtils";
 
 export type Complexity = "simple" | "normal" | "complex";
 export type ColorPalette = "classic" | "ocean" | "forest" | "sunset" | "aurora";
@@ -41,43 +42,6 @@ function mulberry32(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-function cellKey(row: number, col: number): string {
-  return `${row}:${col}`;
-}
-
-function parseKey(key: string): Cell {
-  const [r, c] = key.split(":").map(Number);
-  return [r, c];
-}
-
-function rotateCells(cells: Cell[], turns: number): Cell[] {
-  let next = cells;
-  for (let i = 0; i < turns % 4; i += 1) {
-    next = next.map(([row, col]) => [col, -row]);
-    const minRow = Math.min(...next.map(([row]) => row));
-    const minCol = Math.min(...next.map(([, col]) => col));
-    next = next.map(([row, col]) => [row - minRow, col - minCol]);
-  }
-  return next;
-}
-
-function normalizeCells(cells: Cell[]): Cell[] {
-  const minRow = Math.min(...cells.map(([r]) => r));
-  const minCol = Math.min(...cells.map(([, c]) => c));
-  return cells.map(([r, c]) => [r - minRow, c - minCol] as Cell).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-}
-
-function cellsSignature(cells: Cell[]): string {
-  const normalized = normalizeCells(cells);
-  let best = "";
-  for (let r = 0; r < 4; r += 1) {
-    const rotated = rotateCells(normalized, r);
-    const sig = rotated.map(([rr, cc]) => `${rr},${cc}`).join("|");
-    if (best === "" || sig < best) best = sig;
-  }
-  return best;
 }
 
 function generateConnectedTarget(size: number, targetArea: number, rand: () => number): Cell[] {

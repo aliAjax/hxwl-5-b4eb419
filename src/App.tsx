@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   generateDailyChallenge,
   getDailyRecord,
@@ -27,312 +27,38 @@ import {
   type HintResult,
   type SolverStatus
 } from "./solver";
-
-export type Cell = [number, number];
-
-export type Piece = {
-  id: string;
-  name: string;
-  color: string;
-  cells: Cell[];
-};
-
-export type Level = {
-  id: string;
-  name: string;
-  size: number;
-  target: Cell[];
-  pieces: Piece[];
-};
-
-export type Placement = {
-  pieceId: string;
-  row: number;
-  col: number;
-  rotation: number;
-};
-
-type HistoryState = {
-  placements: Placement[];
-  activePiece: string | null;
-  rotation: number;
-  stats: Stats;
-  showComplete: boolean;
-};
-
-type Save = {
-  levelId: string;
-  placements: Placement[];
-  completed: string[];
-  lastPlayed: Record<string, string>;
-  undoStack?: HistoryState[];
-  redoStack?: HistoryState[];
-};
-
-const storageKey = "hxwl-5-runes";
-const tutorialKey = "hxwl-5-runes-tutorial";
-const settingsKey = "hxwl-5-runes-settings";
-const achievementKey = "hxwl-5-runes-achievements";
-const favoritesKey = "hxwl-5-runes-favorites";
-
-type LevelRecord = {
-  firstCompletedAt: string;
-  minSteps: number;
-  minRotations: number;
-  noResetCompleted: boolean;
-  playCount: number;
-  completedCount: number;
-  lastCompletedAt: string;
-  totalSteps: number;
-  totalRotations: number;
-};
-
-type Achievements = Record<string, LevelRecord>;
-
-function migrateLevelRecord(record: Partial<LevelRecord> & { firstCompletedAt: string; minSteps: number; minRotations: number; noResetCompleted: boolean }): LevelRecord {
-  return {
-    firstCompletedAt: record.firstCompletedAt,
-    minSteps: record.minSteps,
-    minRotations: record.minRotations,
-    noResetCompleted: record.noResetCompleted,
-    playCount: record.playCount ?? 1,
-    completedCount: record.completedCount ?? 1,
-    lastCompletedAt: record.lastCompletedAt || record.firstCompletedAt,
-    totalSteps: record.totalSteps ?? record.minSteps,
-    totalRotations: record.totalRotations ?? record.minRotations
-  };
-}
-
-function loadAchievements(): Achievements {
-  try {
-    const raw = JSON.parse(localStorage.getItem(achievementKey) || "{}") as Achievements;
-    let needsSave = false;
-    for (const key of Object.keys(raw)) {
-      const rec = raw[key] as Partial<LevelRecord> & { firstCompletedAt: string; minSteps: number; minRotations: number; noResetCompleted: boolean };
-      if (rec.playCount === undefined || rec.completedCount === undefined || rec.lastCompletedAt === undefined || rec.totalSteps === undefined || rec.totalRotations === undefined) {
-        raw[key] = migrateLevelRecord(rec);
-        needsSave = true;
-      }
-    }
-    if (needsSave) saveAchievements(raw);
-    return raw;
-  } catch {
-    return {};
-  }
-}
-
-function saveAchievements(data: Achievements) {
-  localStorage.setItem(achievementKey, JSON.stringify(data));
-}
-
-function touchAchievementPlay(levelId: string) {
-  const achievements = loadAchievements();
-  const existing = achievements[levelId];
-  if (existing) {
-    achievements[levelId] = { ...existing, playCount: existing.playCount + 1 };
-  } else {
-    achievements[levelId] = {
-      firstCompletedAt: "",
-      minSteps: 999999,
-      minRotations: 999999,
-      noResetCompleted: false,
-      playCount: 1,
-      completedCount: 0,
-      lastCompletedAt: "",
-      totalSteps: 0,
-      totalRotations: 0
-    };
-  }
-  saveAchievements(achievements);
-}
-
-function loadFavorites(): string[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFavorites(favorites: string[]) {
-  localStorage.setItem(favoritesKey, JSON.stringify(favorites));
-}
-
-function toggleFavorite(levelId: string): string[] {
-  const favorites = loadFavorites();
-  const index = favorites.indexOf(levelId);
-  if (index >= 0) {
-    favorites.splice(index, 1);
-  } else {
-    favorites.push(levelId);
-  }
-  saveFavorites(favorites);
-  return favorites;
-}
-
-type NewRecords = {
-  newMinSteps: boolean;
-  newMinRotations: boolean;
-  firstNoReset: boolean;
-  firstCompletion: boolean;
-};
-
-function updateAchievement(levelId: string, stats: Stats): { achievements: Achievements; records: NewRecords } {
-  const achievements = loadAchievements();
-  const existing = achievements[levelId];
-  const now = new Date().toISOString();
-  const records: NewRecords = {
-    newMinSteps: false,
-    newMinRotations: false,
-    firstNoReset: false,
-    firstCompletion: false
-  };
-
-  if (existing && existing.firstCompletedAt) {
-    const updated: LevelRecord = {
-      ...existing,
-      completedCount: existing.completedCount + 1,
-      lastCompletedAt: now,
-      totalSteps: existing.totalSteps + stats.steps,
-      totalRotations: existing.totalRotations + stats.rotations
-    };
-    if (stats.steps < existing.minSteps) {
-      updated.minSteps = stats.steps;
-      records.newMinSteps = true;
-    }
-    if (stats.rotations < existing.minRotations) {
-      updated.minRotations = stats.rotations;
-      records.newMinRotations = true;
-    }
-    if (stats.resets === 0 && !existing.noResetCompleted) {
-      updated.noResetCompleted = true;
-      records.firstNoReset = true;
-    }
-    achievements[levelId] = updated;
-  } else if (existing && !existing.firstCompletedAt) {
-    achievements[levelId] = {
-      ...existing,
-      firstCompletedAt: now,
-      minSteps: stats.steps,
-      minRotations: stats.rotations,
-      noResetCompleted: stats.resets === 0,
-      completedCount: existing.completedCount + 1,
-      lastCompletedAt: now,
-      totalSteps: existing.totalSteps + stats.steps,
-      totalRotations: existing.totalRotations + stats.rotations
-    };
-    records.newMinSteps = true;
-    records.newMinRotations = true;
-    records.firstNoReset = stats.resets === 0;
-    records.firstCompletion = true;
-  } else {
-    achievements[levelId] = {
-      firstCompletedAt: now,
-      minSteps: stats.steps,
-      minRotations: stats.rotations,
-      noResetCompleted: stats.resets === 0,
-      playCount: 1,
-      completedCount: 1,
-      lastCompletedAt: now,
-      totalSteps: stats.steps,
-      totalRotations: stats.rotations
-    };
-    records.newMinSteps = true;
-    records.newMinRotations = true;
-    records.firstNoReset = stats.resets === 0;
-    records.firstCompletion = true;
-  }
-
-  saveAchievements(achievements);
-  return { achievements, records };
-}
-
-type Settings = {
-  soundEnabled: boolean;
-  animationIntensity: number;
-  theme: "dark" | "light";
-  highlightTarget: boolean;
-  practiceMode: boolean;
-};
-
-const defaultSettings: Settings = {
-  soundEnabled: true,
-  animationIntensity: 100,
-  theme: "dark",
-  highlightTarget: true,
-  practiceMode: false
-};
-
-function loadSettings(): Settings {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(settingsKey) || "") as Partial<Settings>;
-    return { ...defaultSettings, ...parsed };
-  } catch {
-    return { ...defaultSettings };
-  }
-}
-
-type SoundType = "place" | "rotate" | "select" | "success" | "reset";
-
-function createSoundPlayer() {
-  let ctx: AudioContext | null = null;
-  function ensureCtx(): AudioContext | null {
-    if (typeof window === "undefined") return null;
-    if (!ctx) {
-      try {
-        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        ctx = new AC();
-      } catch {
-        return null;
-      }
-    }
-    if (ctx && ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
-    }
-    return ctx;
-  }
-  function playTone(freq: number, duration: number, type: OscillatorType = "sine", volume = 0.15) {
-    const context = ensureCtx();
-    if (!context) return;
-    const osc = context.createOscillator();
-    const gain = context.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, context.currentTime);
-    gain.gain.setValueAtTime(volume, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(context.destination);
-    osc.start();
-    osc.stop(context.currentTime + duration);
-  }
-  function play(kind: SoundType) {
-    switch (kind) {
-      case "place":
-        playTone(520, 0.12, "triangle", 0.18);
-        setTimeout(() => playTone(780, 0.08, "triangle", 0.12), 40);
-        break;
-      case "rotate":
-        playTone(440, 0.07, "square", 0.1);
-        break;
-      case "select":
-        playTone(620, 0.08, "sine", 0.12);
-        break;
-      case "success":
-        [0, 120, 240, 380].forEach((delay, i) => {
-          setTimeout(() => playTone([523, 659, 784, 1046][i], 0.22, "triangle", 0.18), delay);
-        });
-        break;
-      case "reset":
-        playTone(300, 0.1, "sawtooth", 0.1);
-        setTimeout(() => playTone(200, 0.12, "sawtooth", 0.08), 60);
-        break;
-    }
-  }
-  return { play, ensureCtx };
-}
-
-const sound = createSoundPlayer();
+import {
+  useSave,
+  loadTutorialCompleted,
+  saveTutorialCompleted,
+  WORKSHOP_STORAGE_KEY,
+  FAVORITES_KEY
+} from "./hooks/useSave";
+import { useAchievements, loadAchievements } from "./hooks/useAchievements";
+import { useFavorites } from "./hooks/useFavorites";
+import { useSettings } from "./hooks/useSettings";
+import { useWorkshop } from "./hooks/useWorkshop";
+import { useUndoRedo } from "./hooks/useUndoRedo";
+import { cellKey, rotateCells, formatLastPlayed } from "./boardUtils";
+import { writeLocalStorage, readLocalStorage } from "./hooks/useLocalStorage";
+import { STORAGE_KEY } from "./hooks/useSave";
+import type {
+  Cell,
+  Piece,
+  Level,
+  Placement,
+  HistoryState,
+  Save,
+  LevelRecord,
+  Achievements,
+  NewRecords,
+  Settings,
+  SoundType,
+  View,
+  Stats,
+  HallFilters,
+  SortKey
+} from "./types";
 
 function SettingsPanel({
   open,
@@ -562,78 +288,6 @@ const levels: Level[] = [
     ]
   }
 ];
-
-function rotate(cells: Cell[], turns: number): Cell[] {
-  let next = cells;
-  for (let i = 0; i < turns % 4; i += 1) {
-    next = next.map(([row, col]) => [col, -row]);
-    const minRow = Math.min(...next.map(([row]) => row));
-    const minCol = Math.min(...next.map(([, col]) => col));
-    next = next.map(([row, col]) => [row - minRow, col - minCol]);
-  }
-  return next;
-}
-
-function loadSave(): Save {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey) || "") as Save;
-    if (!parsed.lastPlayed) {
-      parsed.lastPlayed = {};
-    }
-    if (!parsed.undoStack) {
-      parsed.undoStack = [];
-    }
-    if (!parsed.redoStack) {
-      parsed.redoStack = [];
-    }
-    return parsed;
-  } catch {
-    return { levelId: levels[0].id, placements: [], completed: [], lastPlayed: {}, undoStack: [], redoStack: [] };
-  }
-}
-
-function cellKey(row: number, col: number) {
-  return `${row}:${col}`;
-}
-
-function formatLastPlayed(isoString?: string): string {
-  if (!isoString) return "尚未游玩";
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return "刚刚";
-  if (diffMins < 60) return `${diffMins} 分钟前`;
-  if (diffHours < 24) return `${diffHours} 小时前`;
-  if (diffDays < 7) return `${diffDays} 天前`;
-  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
-}
-
-export type Stats = {
-  steps: number;
-  rotations: number;
-  resets: number;
-};
-
-type View = "hall" | "game";
-
-type CompletionFilter = "all" | "completed" | "uncompleted";
-type RecencyFilter = "all" | "recent";
-type SourceFilter = "all" | "preset" | "workshop";
-type FavoritesFilter = "all" | "favorites";
-type SortKey = "default" | "name-asc" | "name-desc" | "target-asc" | "target-desc";
-
-type HallFilters = {
-  completion: CompletionFilter;
-  recency: RecencyFilter;
-  source: SourceFilter;
-  favorites: FavoritesFilter;
-  sort: SortKey;
-  searchQuery: string;
-};
 
 type TutorialRefs = {
   pieces: React.RefObject<HTMLDivElement | null>;
@@ -1725,14 +1379,6 @@ function LevelSelectHall({
   );
 }
 
-function loadTutorialCompleted(): boolean {
-  try {
-    return localStorage.getItem(tutorialKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
 function RenameDialog({
   open,
   level,
@@ -1848,84 +1494,7 @@ function DeleteDialog({
   );
 }
 
-const WORKSHOP_STORAGE_KEY = "hxwl-5-workshop-levels";
-
-function loadWorkshopLevels(): Level[] {
-  try {
-    const raw = localStorage.getItem(WORKSHOP_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Level[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveWorkshopLevels(levels: Level[]) {
-  try {
-    localStorage.setItem(WORKSHOP_STORAGE_KEY, JSON.stringify(levels));
-  } catch {}
-}
-
-function renameWorkshopLevel(levelId: string, newName: string): Level[] {
-  const levels = loadWorkshopLevels();
-  const updated = levels.map((l) =>
-    l.id === levelId ? { ...l, name: newName } : l
-  );
-  saveWorkshopLevels(updated);
-  return updated;
-}
-
-function deleteWorkshopLevel(levelId: string): Level[] {
-  const levels = loadWorkshopLevels();
-  const updated = levels.filter((l) => l.id !== levelId);
-  saveWorkshopLevels(updated);
-
-  const save = loadSave();
-  const newCompleted = save.completed.filter((id) => id !== levelId);
-  const newLastPlayed = { ...save.lastPlayed };
-  delete newLastPlayed[levelId];
-  if (save.levelId === levelId) {
-    save.levelId = levels[0]?.id || "gate";
-    save.placements = [];
-  }
-  localStorage.setItem(
-    storageKey,
-    JSON.stringify({ ...save, completed: newCompleted, lastPlayed: newLastPlayed })
-  );
-
-  const achievements = loadAchievements();
-  delete achievements[levelId];
-  saveAchievements(achievements);
-
-  return updated;
-}
-
-function duplicateWorkshopLevel(levelId: string): Level[] {
-  const levels = loadWorkshopLevels();
-  const source = levels.find((l) => l.id === levelId);
-  if (!source) return levels;
-
-  const newId = `${WORKSHOP_LEVEL_PREFIX}${Date.now()}`;
-  const newLevel: Level = {
-    ...source,
-    id: newId,
-    name: `${source.name} 副本`,
-    pieces: source.pieces.map((p, i) => ({
-      ...p,
-      id: `${WORKSHOP_LEVEL_PREFIX}${Date.now()}-${i}`
-    }))
-  };
-
-  const updated = [newLevel, ...levels].slice(0, 20);
-  saveWorkshopLevels(updated);
-  return updated;
-}
-
 export default function App() {
-  const [save, setSave] = useState<Save>(loadSave);
-  const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [activePiece, setActivePiece] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const [view, setView] = useState<View>("hall");
@@ -1936,8 +1505,6 @@ export default function App() {
   const [showHint, setShowHint] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [workshopOpen, setWorkshopOpen] = useState(false);
-  const [workshopLevels, setWorkshopLevels] = useState<Level[]>(loadWorkshopLevels);
-  const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false, firstCompletion: false });
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
@@ -1968,6 +1535,73 @@ export default function App() {
   const [showSolverDialog, setShowSolverDialog] = useState(false);
   const [hintHighlight, setHintHighlight] = useState<Set<string>>(new Set());
   const solverAbortRef = useRef(false);
+  const prevSolvedRef = useRef(false);
+  const hasInteractionRef = useRef(false);
+
+  const { save, setSave } = useSave();
+  const { settings, setSettings, settingsOpen, setSettingsOpen, playSound } = useSettings();
+  const { workshopLevels, addLevel, renameLevel, deleteLevel, duplicateLevel } = useWorkshop();
+  const { favorites, setFavorites, toggleFavorite } = useFavorites();
+  const { updateAchievement: updateAchievementHook, touchPlay } = useAchievements();
+
+  const latestState = useMemo(
+    () => ({
+      placements: save.placements,
+      activePiece,
+      rotation,
+      stats,
+      showComplete
+    }),
+    [save.placements, activePiece, rotation, stats, showComplete]
+  );
+
+  const {
+    canUndo,
+    canRedo,
+    captureState,
+    undo: undoInternal,
+    redo: redoInternal,
+    resetHistory
+  } = useUndoRedo(latestState, {
+    initialUndoStack: save.undoStack || [],
+    initialRedoStack: save.redoStack || [],
+    onHistoryChange: (undoStack, redoStack) => {
+      setSave((current) => ({ ...current, undoStack, redoStack }));
+    }
+  });
+
+  const undoHook = useCallback(() => {
+    undoInternal(
+      (state) => {
+        setSave((current) => ({ ...current, placements: state.placements }));
+        setActivePiece(state.activePiece);
+        setRotation(state.rotation);
+        setStats(state.stats);
+        setShowComplete(state.showComplete);
+      },
+      () => {
+        prevSolvedRef.current = true;
+      }
+    );
+    playSound("select");
+  }, [undoInternal, setSave, playSound]);
+
+  const redoHook = useCallback(() => {
+    redoInternal(
+      (state) => {
+        setSave((current) => ({ ...current, placements: state.placements }));
+        setActivePiece(state.activePiece);
+        setRotation(state.rotation);
+        setStats(state.stats);
+        setShowComplete(state.showComplete);
+      },
+      () => {
+        prevSolvedRef.current = true;
+      }
+    );
+    playSound("select");
+  }, [redoInternal, setSave, playSound]);
+
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isHistoryReplay = isHistoryReplayLevelId(save.levelId);
@@ -2000,18 +1634,6 @@ export default function App() {
     const interval = setInterval(checkDateChange, 60000);
     return () => clearInterval(interval);
   }, [todayDate]);
-  const prevSolvedRef = useRef(false);
-  const hasInteractionRef = useRef(false);
-  const undoStackRef = useRef<HistoryState[]>(save.undoStack || []);
-  const redoStackRef = useRef<HistoryState[]>(save.redoStack || []);
-  const isPerformingUndoRedoRef = useRef(false);
-  const latestStateRef = useRef({
-    placements: save.placements,
-    activePiece,
-    rotation,
-    stats,
-    showComplete
-  });
 
   const tutorialRefs: TutorialRefs = {
     pieces: useRef<HTMLDivElement>(null),
@@ -2020,32 +1642,6 @@ export default function App() {
     reset: useRef<HTMLButtonElement>(null),
     hint: useRef<HTMLParagraphElement>(null)
   };
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(save));
-  }, [save]);
-
-  useEffect(() => {
-    localStorage.setItem(settingsKey, JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    saveWorkshopLevels(workshopLevels);
-  }, [workshopLevels]);
-
-  useEffect(() => {
-    saveFavorites(favorites);
-  }, [favorites]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.theme = settings.theme;
-    const intensity = Math.max(0, Math.min(100, settings.animationIntensity));
-    const durationScale = 0.2 + (1.8 * (100 - intensity)) / 100;
-    const opacity = 0.15 + (0.85 * intensity) / 100;
-    root.style.setProperty("--anim-duration-scale", String(durationScale.toFixed(3)));
-    root.style.setProperty("--anim-opacity", String(opacity.toFixed(3)));
-  }, [settings.theme, settings.animationIntensity]);
 
   useEffect(() => {
     if (!loadTutorialCompleted() && view === "game" && !showTutorial) {
@@ -2058,123 +1654,6 @@ export default function App() {
   }, [view, showTutorial]);
 
   useEffect(() => {
-    latestStateRef.current = {
-      placements: save.placements,
-      activePiece,
-      rotation,
-      stats,
-      showComplete
-    };
-  }, [save.placements, activePiece, rotation, stats, showComplete]);
-
-  const playSound = (kind: SoundType) => {
-    if (settings.soundEnabled) {
-      sound.ensureCtx();
-      sound.play(kind);
-    }
-  };
-
-  function persistHistory() {
-    setSave((current) => ({
-      ...current,
-      undoStack: undoStackRef.current,
-      redoStack: redoStackRef.current
-    }));
-  }
-
-  function captureState() {
-    if (isPerformingUndoRedoRef.current) return;
-    const latest = latestStateRef.current;
-    const state: HistoryState = {
-      placements: [...latest.placements],
-      activePiece: latest.activePiece,
-      rotation: latest.rotation,
-      stats: { ...latest.stats },
-      showComplete: latest.showComplete
-    };
-    undoStackRef.current.push(state);
-    redoStackRef.current = [];
-    persistHistory();
-  }
-
-  function clearRedoStack() {
-    redoStackRef.current = [];
-    persistHistory();
-  }
-
-  function canUndo() {
-    return undoStackRef.current.length > 0;
-  }
-
-  function canRedo() {
-    return redoStackRef.current.length > 0;
-  }
-
-  function undo() {
-    if (!canUndo()) return;
-    isPerformingUndoRedoRef.current = true;
-    const prevState = undoStackRef.current.pop()!;
-    const latest = latestStateRef.current;
-    const currentState: HistoryState = {
-      placements: [...latest.placements],
-      activePiece: latest.activePiece,
-      rotation: latest.rotation,
-      stats: { ...latest.stats },
-      showComplete: latest.showComplete
-    };
-    redoStackRef.current.push(currentState);
-
-    setSave((current) => ({ ...current, placements: prevState.placements }));
-    setActivePiece(prevState.activePiece);
-    setRotation(prevState.rotation);
-    setStats(prevState.stats);
-    setShowComplete(prevState.showComplete);
-    if (prevState.showComplete) {
-      prevSolvedRef.current = true;
-    }
-    playSound("select");
-    persistHistory();
-    setTimeout(() => {
-      isPerformingUndoRedoRef.current = false;
-    }, 0);
-  }
-
-  function redo() {
-    if (!canRedo()) return;
-    isPerformingUndoRedoRef.current = true;
-    const nextState = redoStackRef.current.pop()!;
-    const latest = latestStateRef.current;
-    const currentState: HistoryState = {
-      placements: [...latest.placements],
-      activePiece: latest.activePiece,
-      rotation: latest.rotation,
-      stats: { ...latest.stats },
-      showComplete: latest.showComplete
-    };
-    undoStackRef.current.push(currentState);
-
-    setSave((current) => ({ ...current, placements: nextState.placements }));
-    setActivePiece(nextState.activePiece);
-    setRotation(nextState.rotation);
-    setStats(nextState.stats);
-    setShowComplete(nextState.showComplete);
-    if (nextState.showComplete) {
-      prevSolvedRef.current = true;
-    }
-    playSound("select");
-    persistHistory();
-    setTimeout(() => {
-      isPerformingUndoRedoRef.current = false;
-    }, 0);
-  }
-
-  function resetHistory() {
-    undoStackRef.current = [];
-    redoStackRef.current = [];
-    persistHistory();
-  }
-
-  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (view !== "game") return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -2182,18 +1661,18 @@ export default function App() {
       const modKey = isMac ? e.metaKey : e.ctrlKey;
       if (modKey && !e.shiftKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        undo();
+        undoHook();
       } else if ((modKey && e.shiftKey && e.key.toLowerCase() === "z") || (modKey && e.key.toLowerCase() === "y")) {
         e.preventDefault();
-        redo();
+        redoHook();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [view]);
+  }, [view, undoHook, redoHook]);
 
   function completeTutorial() {
-    localStorage.setItem(tutorialKey, "1");
+    saveTutorialCompleted();
     setShowTutorial(false);
     setTutorialStep(0);
   }
@@ -2230,7 +1709,7 @@ export default function App() {
     save.placements.forEach((placement) => {
       const piece = level.pieces.find((item) => item.id === placement.pieceId);
       if (!piece) return;
-      rotate(piece.cells, placement.rotation).forEach(([row, col]) => map.set(cellKey(row + placement.row, col + placement.col), piece.color));
+      rotateCells(piece.cells, placement.rotation).forEach(([row, col]) => map.set(cellKey(row + placement.row, col + placement.col), piece.color));
     });
     return map;
   }, [level, save.placements]);
@@ -2243,7 +1722,7 @@ export default function App() {
     const piece = level.pieces.find((item) => item.id === activePiece);
     if (!piece) return result;
     const [hoverRow, hoverCol] = hoverCell;
-    const cells = rotate(piece.cells, rotation).map(([dr, dc]) => [hoverRow + dr, hoverCol + dc] as Cell);
+    const cells = rotateCells(piece.cells, rotation).map(([dr, dc]) => [hoverRow + dr, hoverCol + dc] as Cell);
     const hasInvalidCell = cells.some(([r, c]) => r < 0 || c < 0 || r >= level.size || c >= level.size || occupied.has(cellKey(r, c)));
     for (const [r, c] of cells) {
       const outOfBounds = r < 0 || c < 0 || r >= level.size || c >= level.size;
@@ -2263,7 +1742,7 @@ export default function App() {
     if (solved && !settings.practiceMode && !isDailyChallenge && !isHistoryReplay && !save.completed.includes(level.id)) {
       setSave((current) => ({ ...current, completed: [...current.completed, level.id] }));
     }
-  }, [level.id, save.completed, solved, isDailyChallenge, isHistoryReplay, settings.practiceMode]);
+  }, [level.id, save.completed, solved, isDailyChallenge, isHistoryReplay, settings.practiceMode, setSave]);
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
@@ -2292,7 +1771,7 @@ export default function App() {
           setHistoryReplayRecord(record);
           setDailyCalendarRefreshKey((key) => key + 1);
         } else {
-          const { records } = updateAchievement(level.id, stats);
+          const records = updateAchievementHook(level.id, stats);
           setNewRecords(records);
         }
       } else {
@@ -2302,13 +1781,13 @@ export default function App() {
       setShowComplete(true);
     }
     prevSolvedRef.current = solved;
-  }, [solved, isDailyChallenge, isHistoryReplay, historyReplayDate, level.id, stats, settings.practiceMode]);
+  }, [solved, isDailyChallenge, isHistoryReplay, historyReplayDate, level.id, stats, settings.practiceMode, updateAchievementHook, playSound]);
 
   function place(row: number, col: number) {
     if (!activePiece) return;
     const piece = level.pieces.find((item) => item.id === activePiece);
     if (!piece) return;
-    const cells = rotate(piece.cells, rotation).map(([r, c]) => [r + row, c + col] as Cell);
+    const cells = rotateCells(piece.cells, rotation).map(([r, c]) => [r + row, c + col] as Cell);
     const out = cells.some(([r, c]) => r < 0 || c < 0 || r >= level.size || c >= level.size);
     const collision = cells.some(([r, c]) => occupied.has(cellKey(r, c)));
     if (out || collision) return;
@@ -2327,7 +1806,7 @@ export default function App() {
     prevSolvedRef.current = false;
     resetHistory();
     if (!levelId.startsWith(DAILY_CHALLENGE_LEVEL_ID) && !isHistoryReplayLevelId(levelId)) {
-      touchAchievementPlay(levelId);
+      touchPlay(levelId);
     }
     clearLevelCache(level);
     setSave((current) => ({
@@ -2370,52 +1849,47 @@ export default function App() {
   }
 
   function playWorkshopLevel(newLevel: Level) {
-    setWorkshopLevels((current) => {
-      const exists = current.some((l) => l.id === newLevel.id);
-      if (exists) return current;
-      return [newLevel, ...current].slice(0, 20);
-    });
+    addLevel(newLevel);
     setWorkshopOpen(false);
     switchLevel(newLevel.id);
   }
 
   function handleRenameLevel(levelId: string, newName: string) {
-    const updated = renameWorkshopLevel(levelId, newName.trim() || "未命名关卡");
-    setWorkshopLevels(updated);
+    renameLevel(levelId, newName.trim() || "未命名关卡");
     setRenameLevelId(null);
   }
 
   function handleDeleteLevel(levelId: string) {
-    const updated = deleteWorkshopLevel(levelId);
-    setWorkshopLevels(updated);
-    setSave(loadSave());
-    setFavorites((prev) => prev.filter((id) => id !== levelId));
+    deleteLevel(levelId, levels[0].id);
+    setTimeout(() => {
+      setSave(readLocalStorage<Save>(STORAGE_KEY, {
+        levelId: levels[0].id,
+        placements: [],
+        completed: [],
+        lastPlayed: {},
+        undoStack: [],
+        redoStack: []
+      }));
+      setFavorites(readLocalStorage<string[]>(FAVORITES_KEY, []));
+    }, 0);
     setDeleteLevelId(null);
   }
 
   function handleDuplicateLevel(levelId: string) {
-    const updated = duplicateWorkshopLevel(levelId);
-    setWorkshopLevels(updated);
+    duplicateLevel(levelId);
   }
 
   function handleExportLevel(levelId: string) {
-    const level = workshopLevels.find((l) => l.id === levelId);
-    if (!level) return;
-    const json = exportLevelToJson(level);
+    const targetLevel = workshopLevels.find((l) => l.id === levelId);
+    if (!targetLevel) return;
+    const json = exportLevelToJson(targetLevel);
     copyToClipboard(json).catch(() => {});
   }
 
-  function handleToggleFavorite(levelId: string) {
-    const newFavorites = toggleFavorite(levelId);
-    setFavorites(newFavorites);
-  }
-
-  function handleImportLevel(level: Level) {
-    setWorkshopLevels((current) => {
-      return [level, ...current].slice(0, 20);
-    });
+  function handleImportLevel(importedLevel: Level) {
+    addLevel(importedLevel);
     setImportDialogOpen(false);
-    switchLevel(level.id);
+    switchLevel(importedLevel.id);
   }
 
   function backToHall() {
@@ -2516,7 +1990,7 @@ export default function App() {
       if (result.status === "solved" && result.nextPlacement) {
         const piece = level.pieces.find((p) => p.id === result.nextPlacement!.pieceId);
         if (piece) {
-          const rotatedCells = rotate(piece.cells, result.nextPlacement.rotation);
+          const rotatedCells = rotateCells(piece.cells, result.nextPlacement.rotation);
           const highlight = new Set<string>();
           rotatedCells.forEach(([dr, dc]) => {
             highlight.add(cellKey(result.nextPlacement!.row + dr, result.nextPlacement!.col + dc));
@@ -2658,7 +2132,7 @@ export default function App() {
           onExportLevel={handleExportLevel}
           onOpenImport={() => setImportDialogOpen(true)}
           favorites={favorites}
-          onToggleFavorite={handleToggleFavorite}
+          onToggleFavorite={toggleFavorite}
         />
         <DailyCalendarPanel
           open={dailyCalendarOpen}
@@ -2883,10 +2357,10 @@ export default function App() {
             旋转选中碎片
           </button>
           <div className="undo-redo-group">
-            <button className="undo-btn" onClick={undo} disabled={!canUndo()}>
+            <button className="undo-btn" onClick={undoHook} disabled={!canUndo}>
               ↶ 撤销
             </button>
-            <button className="redo-btn" onClick={redo} disabled={!canRedo()}>
+            <button className="redo-btn" onClick={redoHook} disabled={!canRedo}>
               ↷ 重做
             </button>
           </div>

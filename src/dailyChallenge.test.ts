@@ -15,7 +15,7 @@ import {
   type DailyChallengeRecord,
   type DailyChallengeSave
 } from "./dailyChallenge";
-import type { Stats } from "./App";
+import type { Stats } from "./types";
 
 const DAILY_CHALLENGE_KEY = "hxwl-5-daily-challenge";
 

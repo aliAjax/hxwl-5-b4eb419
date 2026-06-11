@@ -1,5 +1,6 @@
-import type { Cell, Level, Piece } from "./App";
+import type { Cell, Level, Piece } from "./types";
 import { WORKSHOP_LEVEL_PREFIX } from "./levelGenerator";
+import { cellKey, rotateCells, normalizeCells } from "./boardUtils";
 
 export type ImportValidationResult = {
   valid: boolean;
@@ -24,26 +25,6 @@ function isPiece(value: unknown): value is Piece {
   if (!Array.isArray(p.cells)) return false;
   if (!p.cells.every(isCell)) return false;
   return true;
-}
-
-function normalizeCells(cells: Cell[]): Cell[] {
-  const minRow = Math.min(...cells.map(([r]) => r));
-  const minCol = Math.min(...cells.map(([, c]) => c));
-  return cells
-    .map(([r, c]) => [r - minRow, c - minCol] as Cell)
-    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-}
-
-function rotateCells(cells: Cell[], turns: number): Cell[] {
-  let next = cells;
-  for (let i = 0; i < turns % 4; i += 1) {
-    next = next.map(([row, col]) => [col, -row] as Cell);
-  }
-  return normalizeCells(next);
-}
-
-function cellKey(r: number, c: number): string {
-  return `${r}:${c}`;
 }
 
 function canCoverTarget(size: number, target: Cell[], pieces: Piece[]): { canCover: boolean; reason?: string } {
