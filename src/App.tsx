@@ -960,7 +960,10 @@ function LevelSelectHall({
   onOpenWorkshop,
   onSelectDaily,
   dailyRecord,
-  todayDate
+  todayDate,
+  onRenameLevel,
+  onDeleteLevel,
+  onDuplicateLevel
 }: {
   levels: Level[];
   workshopLevels: Level[];
@@ -975,6 +978,9 @@ function LevelSelectHall({
   onSelectDaily: () => void;
   dailyRecord: DailyChallengeRecord;
   todayDate: string;
+  onRenameLevel: (levelId: string) => void;
+  onDeleteLevel: (levelId: string) => void;
+  onDuplicateLevel: (levelId: string) => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length + workshopLevels.length;
@@ -1052,44 +1058,80 @@ function LevelSelectHall({
   function renderLevelCard(item: LevelWithSource) {
     const isCompleted = save.completed.includes(item.id);
     const lastPlayed = save.lastPlayed[item.id];
+    const isWorkshop = item.source === "workshop";
     return (
-      <button
-        className={`level-card ${isCompleted ? "completed" : ""}`}
+      <div
+        className={`level-card ${isCompleted ? "completed" : ""} ${isWorkshop ? "workshop-card" : ""}`}
         key={item.id}
-        onClick={() => onSelectLevel(item.id)}
       >
-        <div className="card-header">
-          {item.source === "preset" && item.presetIndex !== undefined ? (
-            <span className="level-index">{String(item.presetIndex + 1).padStart(2, "0")}</span>
-          ) : (
-            <span className="workshop-level-tag">✨ 工坊</span>
-          )}
-          {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+        <div className="card-clickable" onClick={() => onSelectLevel(item.id)}>
+          <div className="card-header">
+            {item.source === "preset" && item.presetIndex !== undefined ? (
+              <span className="level-index">{String(item.presetIndex + 1).padStart(2, "0")}</span>
+            ) : (
+              <span className="workshop-level-tag">✨ 工坊</span>
+            )}
+            {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+          </div>
+          <h3 className="level-name">{item.name}</h3>
+          <LevelPreview level={item} />
+          <div className="level-meta">
+            <span className="meta-item">
+              <i className="meta-icon board-icon" />
+              {item.size}×{item.size} 棋盘
+            </span>
+            <span className="meta-item">
+              <i className="meta-icon target-icon" />
+              {item.target.length} 目标格
+            </span>
+            <span className="meta-item">
+              <i className="meta-icon piece-icon" />
+              {item.pieces.length} 个碎片
+            </span>
+          </div>
+          <div className="level-footer">
+            <span className="last-played">
+              <i className="meta-icon clock-icon" />
+              {formatLastPlayed(lastPlayed)}
+            </span>
+            <span className="enter-arrow">开始 →</span>
+          </div>
         </div>
-        <h3 className="level-name">{item.name}</h3>
-        <LevelPreview level={item} />
-        <div className="level-meta">
-          <span className="meta-item">
-            <i className="meta-icon board-icon" />
-            {item.size}×{item.size} 棋盘
-          </span>
-          <span className="meta-item">
-            <i className="meta-icon target-icon" />
-            {item.target.length} 目标格
-          </span>
-          <span className="meta-item">
-            <i className="meta-icon piece-icon" />
-            {item.pieces.length} 个碎片
-          </span>
-        </div>
-        <div className="level-footer">
-          <span className="last-played">
-            <i className="meta-icon clock-icon" />
-            {formatLastPlayed(lastPlayed)}
-          </span>
-          <span className="enter-arrow">开始 →</span>
-        </div>
-      </button>
+        {isWorkshop && (
+          <div className="card-actions">
+            <button
+              className="card-action-btn rename-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRenameLevel(item.id);
+              }}
+              title="重命名"
+            >
+              ✏️ 重命名
+            </button>
+            <button
+              className="card-action-btn duplicate-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicateLevel(item.id);
+              }}
+              title="复制"
+            >
+              📋 复制
+            </button>
+            <button
+              className="card-action-btn delete-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteLevel(item.id);
+              }}
+              title="删除"
+            >
+              🗑️ 删除
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -1248,6 +1290,121 @@ function loadTutorialCompleted(): boolean {
   }
 }
 
+function RenameDialog({
+  open,
+  level,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  level: Level | null;
+  onClose: () => void;
+  onConfirm: (newName: string) => void;
+}) {
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    if (open && level) {
+      setName(level.name);
+    }
+  }, [open, level]);
+
+  if (!open || !level) return null;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (trimmed) {
+      onConfirm(trimmed);
+    }
+  }
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-header">
+          <h2 className="dialog-title">重命名关卡</h2>
+          <button className="dialog-close" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="dialog-body">
+            <label className="dialog-label">
+              关卡名称
+              <input
+                className="dialog-input"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={30}
+                autoFocus
+              />
+            </label>
+            <p className="dialog-hint">最多 30 个字符</p>
+          </div>
+          <div className="dialog-actions">
+            <button type="button" className="dialog-btn secondary" onClick={onClose}>
+              取消
+            </button>
+            <button type="submit" className="dialog-btn primary" disabled={!name.trim()}>
+              确认
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteDialog({
+  open,
+  level,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  level: Level | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open || !level) return null;
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-header">
+          <h2 className="dialog-title">确认删除</h2>
+          <button className="dialog-close" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <div className="dialog-body">
+          <p className="dialog-warning-text">
+            确定要删除关卡 <strong>「{level.name}」</strong> 吗？
+          </p>
+          <div className="dialog-warning-list">
+            <p>⚠️ 删除后将同时清除：</p>
+            <ul>
+              <li>该关卡的完成状态</li>
+              <li>该关卡的成就记录（最低步数、最低旋转等）</li>
+            </ul>
+          </div>
+          <p className="dialog-hint danger">此操作无法撤销</p>
+        </div>
+        <div className="dialog-actions">
+          <button className="dialog-btn secondary" onClick={onClose}>
+            取消
+          </button>
+          <button className="dialog-btn danger" onClick={onConfirm}>
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const WORKSHOP_STORAGE_KEY = "hxwl-5-workshop-levels";
 
 function loadWorkshopLevels(): Level[] {
@@ -1265,6 +1422,61 @@ function saveWorkshopLevels(levels: Level[]) {
   try {
     localStorage.setItem(WORKSHOP_STORAGE_KEY, JSON.stringify(levels));
   } catch {}
+}
+
+function renameWorkshopLevel(levelId: string, newName: string): Level[] {
+  const levels = loadWorkshopLevels();
+  const updated = levels.map((l) =>
+    l.id === levelId ? { ...l, name: newName } : l
+  );
+  saveWorkshopLevels(updated);
+  return updated;
+}
+
+function deleteWorkshopLevel(levelId: string): Level[] {
+  const levels = loadWorkshopLevels();
+  const updated = levels.filter((l) => l.id !== levelId);
+  saveWorkshopLevels(updated);
+
+  const save = loadSave();
+  const newCompleted = save.completed.filter((id) => id !== levelId);
+  const newLastPlayed = { ...save.lastPlayed };
+  delete newLastPlayed[levelId];
+  if (save.levelId === levelId) {
+    save.levelId = levels[0]?.id || "gate";
+    save.placements = [];
+  }
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify({ ...save, completed: newCompleted, lastPlayed: newLastPlayed })
+  );
+
+  const achievements = loadAchievements();
+  delete achievements[levelId];
+  saveAchievements(achievements);
+
+  return updated;
+}
+
+function duplicateWorkshopLevel(levelId: string): Level[] {
+  const levels = loadWorkshopLevels();
+  const source = levels.find((l) => l.id === levelId);
+  if (!source) return levels;
+
+  const newId = `${WORKSHOP_LEVEL_PREFIX}${Date.now()}`;
+  const newLevel: Level = {
+    ...source,
+    id: newId,
+    name: `${source.name} 副本`,
+    pieces: source.pieces.map((p, i) => ({
+      ...p,
+      id: `${WORKSHOP_LEVEL_PREFIX}${Date.now()}-${i}`
+    }))
+  };
+
+  const updated = [newLevel, ...levels].slice(0, 20);
+  saveWorkshopLevels(updated);
+  return updated;
 }
 
 export default function App() {
@@ -1292,6 +1504,8 @@ export default function App() {
     source: "all",
     sort: "default"
   });
+  const [renameLevelId, setRenameLevelId] = useState<string | null>(null);
+  const [deleteLevelId, setDeleteLevelId] = useState<string | null>(null);
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
@@ -1632,6 +1846,24 @@ export default function App() {
     switchLevel(newLevel.id);
   }
 
+  function handleRenameLevel(levelId: string, newName: string) {
+    const updated = renameWorkshopLevel(levelId, newName.trim() || "未命名关卡");
+    setWorkshopLevels(updated);
+    setRenameLevelId(null);
+  }
+
+  function handleDeleteLevel(levelId: string) {
+    const updated = deleteWorkshopLevel(levelId);
+    setWorkshopLevels(updated);
+    setSave(loadSave());
+    setDeleteLevelId(null);
+  }
+
+  function handleDuplicateLevel(levelId: string) {
+    const updated = duplicateWorkshopLevel(levelId);
+    setWorkshopLevels(updated);
+  }
+
   function backToHall() {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
@@ -1744,6 +1976,9 @@ export default function App() {
           onSelectDaily={switchToDailyChallenge}
           dailyRecord={dailyRecord}
           todayDate={todayDate}
+          onRenameLevel={(id) => setRenameLevelId(id)}
+          onDeleteLevel={(id) => setDeleteLevelId(id)}
+          onDuplicateLevel={handleDuplicateLevel}
         />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
         <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
@@ -1751,6 +1986,26 @@ export default function App() {
           open={workshopOpen}
           onClose={() => setWorkshopOpen(false)}
           onPlayLevel={playWorkshopLevel}
+        />
+        <RenameDialog
+          open={renameLevelId !== null}
+          level={workshopLevels.find((l) => l.id === renameLevelId) || null}
+          onClose={() => setRenameLevelId(null)}
+          onConfirm={(newName) => {
+            if (renameLevelId) {
+              handleRenameLevel(renameLevelId, newName);
+            }
+          }}
+        />
+        <DeleteDialog
+          open={deleteLevelId !== null}
+          level={workshopLevels.find((l) => l.id === deleteLevelId) || null}
+          onClose={() => setDeleteLevelId(null)}
+          onConfirm={() => {
+            if (deleteLevelId) {
+              handleDeleteLevel(deleteLevelId);
+            }
+          }}
         />
       </main>
     );

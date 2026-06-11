@@ -2838,3 +2838,289 @@ h1 {
     width: 100%;
   }
 }
+
+.level-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-clickable {
+  cursor: pointer;
+  flex: 1;
+}
+
+.workshop-card {
+  padding-bottom: 0;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.card-action-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-fg-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all calc(0.15s * var(--anim-duration-scale)) ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.card-action-btn:hover {
+  background: var(--color-accent-bg);
+  border-color: var(--color-accent-soft);
+  color: var(--color-fg);
+}
+
+.card-action-btn.delete-btn:hover {
+  background: var(--color-hint-misplaced-bg);
+  border-color: var(--color-hint-misplaced-soft);
+  color: var(--color-hint-misplaced);
+}
+
+.card-action-btn.rename-btn:hover {
+  background: rgba(208, 155, 76, 0.15);
+  border-color: rgba(208, 155, 76, 0.4);
+  color: #d09b4c;
+}
+
+.card-action-btn.duplicate-btn:hover {
+  background: rgba(106, 181, 122, 0.15);
+  border-color: rgba(106, 181, 122, 0.4);
+  color: #6ab57a;
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  animation: dialogFadeIn calc(0.2s * var(--anim-duration-scale)) ease;
+}
+
+@keyframes dialogFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialog-panel {
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border-accent);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 32px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: dialogSlideIn calc(0.25s * var(--anim-duration-scale)) ease;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--color-fg);
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  color: var(--color-fg-dim);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 8px;
+  transition: color calc(0.15s * var(--anim-duration-scale)) ease;
+}
+
+.dialog-close:hover {
+  color: var(--color-fg);
+}
+
+.dialog-body {
+  margin-bottom: 24px;
+}
+
+.dialog-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-fg);
+  margin-bottom: 8px;
+}
+
+.dialog-input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-fg);
+  font-size: 1rem;
+  font-weight: 600;
+  transition: all calc(0.15s * var(--anim-duration-scale)) ease;
+  font-family: inherit;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.dialog-hint {
+  font-size: 0.82rem;
+  color: var(--color-fg-dim);
+  margin: 4px 0 0;
+}
+
+.dialog-hint.danger {
+  color: var(--color-hint-misplaced);
+  font-weight: 700;
+}
+
+.dialog-warning-text {
+  font-size: 1rem;
+  color: var(--color-fg);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+.dialog-warning-text strong {
+  color: var(--color-accent);
+}
+
+.dialog-warning-list {
+  background: var(--color-hint-misplaced-bg);
+  border: 1px solid var(--color-hint-misplaced-soft);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.dialog-warning-list p {
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--color-hint-misplaced);
+  font-size: 0.9rem;
+}
+
+.dialog-warning-list ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--color-fg-muted);
+  font-size: 0.88rem;
+  line-height: 1.8;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.dialog-btn {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+  color: var(--color-fg);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all calc(0.15s * var(--anim-duration-scale)) ease;
+  font-family: inherit;
+}
+
+.dialog-btn:hover {
+  border-color: var(--color-accent-soft);
+}
+
+.dialog-btn.secondary {
+  background: var(--color-bg-soft);
+  color: var(--color-fg-muted);
+}
+
+.dialog-btn.secondary:hover {
+  color: var(--color-fg);
+  border-color: var(--color-border-accent);
+}
+
+.dialog-btn.primary {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  border-color: var(--color-accent);
+}
+
+.dialog-btn.primary:hover {
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.dialog-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.dialog-btn.danger {
+  background: var(--color-hint-misplaced);
+  color: white;
+  border-color: var(--color-hint-misplaced);
+}
+
+.dialog-btn.danger:hover {
+  box-shadow: 0 0 0 3px var(--color-hint-misplaced-soft);
+}
+
+@media (max-width: 560px) {
+  .card-actions {
+    flex-wrap: wrap;
+  }
+
+  .card-action-btn {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 0;
+  }
+
+  .dialog-panel {
+    padding: 20px;
+  }
+
+  .dialog-title {
+    font-size: 1.15rem;
+  }
+}
