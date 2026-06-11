@@ -19,6 +19,14 @@ import {
 import WorkshopPanel, { WORKSHOP_LEVEL_PREFIX } from "./WorkshopPanel";
 import ImportLevelDialog from "./ImportLevelDialog";
 import { exportLevelToJson, copyToClipboard } from "./levelImportExport";
+import {
+  solveLevel,
+  getHint,
+  clearLevelCache,
+  type SolverResult,
+  type HintResult,
+  type SolverStatus
+} from "./solver";
 
 export type Cell = [number, number];
 
@@ -37,7 +45,7 @@ export type Level = {
   pieces: Piece[];
 };
 
-type Placement = {
+export type Placement = {
   pieceId: string;
   row: number;
   col: number;
@@ -1952,6 +1960,14 @@ export default function App() {
   const [dailyCalendarOpen, setDailyCalendarOpen] = useState(false);
   const [dailyStreak, setDailyStreak] = useState(() => calculateStreak());
   const [dailyCalendarRefreshKey, setDailyCalendarRefreshKey] = useState(0);
+  const [solverStatus, setSolverStatus] = useState<SolverStatus>("idle");
+  const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
+  const [hintResult, setHintResult] = useState<HintResult | null>(null);
+  const [isSolving, setIsSolving] = useState(false);
+  const [isGettingHint, setIsGettingHint] = useState(false);
+  const [showSolverDialog, setShowSolverDialog] = useState(false);
+  const [hintHighlight, setHintHighlight] = useState<Set<string>>(new Set());
+  const solverAbortRef = useRef(false);
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isHistoryReplay = isHistoryReplayLevelId(save.levelId);
@@ -2313,6 +2329,7 @@ export default function App() {
     if (!levelId.startsWith(DAILY_CHALLENGE_LEVEL_ID) && !isHistoryReplayLevelId(levelId)) {
       touchAchievementPlay(levelId);
     }
+    clearLevelCache(level);
     setSave((current) => ({
       ...current,
       levelId,
@@ -2325,6 +2342,11 @@ export default function App() {
     setShowComplete(false);
     setShowHint(false);
     setHoverCell(null);
+    setSolverStatus("idle");
+    setSolverResult(null);
+    setHintResult(null);
+    setHintHighlight(new Set());
+    setShowSolverDialog(false);
     setView("game");
   }
 
@@ -2433,11 +2455,128 @@ export default function App() {
     setSave((current) => ({ ...current, placements: [] }));
     setStats((s) => ({ ...s, resets: s.resets + 1 }));
     setHoverCell(null);
+    setHintResult(null);
+    setHintHighlight(new Set());
     playSound("reset");
   }
 
   function toggleHint() {
     setShowHint((current) => !current);
+  }
+
+  async function handleSolve() {
+    if (isSolving || solved) return;
+    setIsSolving(true);
+    setSolverStatus("solving");
+    setShowSolverDialog(true);
+    solverAbortRef.current = false;
+
+    try {
+      const targetArea = level.target.length;
+      const timeoutMs = targetArea > 25 ? 8000 : targetArea > 15 ? 5000 : 3000;
+      const result = await solveLevel(level, save.placements, timeoutMs, true);
+
+      setSolverResult(result);
+      setSolverStatus(result.status);
+
+      if (result.status === "solved" && result.solution) {
+        setHintResult({
+          status: "solved",
+          nextPlacement: null,
+          remainingPlacements: result.solution.filter(
+            (p) => !save.placements.some((ep) => ep.pieceId === p.pieceId)
+          ),
+          message: `找到完整解答，共 ${result.solution.length} 步`,
+          isComplete: false
+        });
+      }
+    } catch (e) {
+      setSolverStatus("error");
+      setSolverResult({
+        status: "error",
+        solution: null,
+        message: e instanceof Error ? e.message : "求解出错",
+        solveTimeMs: 0,
+        nodesVisited: 0
+      });
+    } finally {
+      setIsSolving(false);
+    }
+  }
+
+  async function handleGetHint() {
+    if (isGettingHint || solved) return;
+    setIsGettingHint(true);
+    setHintHighlight(new Set());
+
+    try {
+      const result = await getHint(level, save.placements, 3000);
+      setHintResult(result);
+
+      if (result.status === "solved" && result.nextPlacement) {
+        const piece = level.pieces.find((p) => p.id === result.nextPlacement!.pieceId);
+        if (piece) {
+          const rotatedCells = rotate(piece.cells, result.nextPlacement.rotation);
+          const highlight = new Set<string>();
+          rotatedCells.forEach(([dr, dc]) => {
+            highlight.add(cellKey(result.nextPlacement!.row + dr, result.nextPlacement!.col + dc));
+          });
+          setHintHighlight(highlight);
+        }
+      }
+    } catch (e) {
+      setHintResult({
+        status: "error",
+        nextPlacement: null,
+        remainingPlacements: null,
+        message: e instanceof Error ? e.message : "提示生成出错",
+        isComplete: false
+      });
+    } finally {
+      setIsGettingHint(false);
+    }
+  }
+
+  function applyFullSolution() {
+    if (!solverResult?.solution) return;
+    const solution = solverResult.solution.filter(
+      (p) => !save.placements.some((ep) => ep.pieceId === p.pieceId)
+    );
+    if (solution.length === 0) return;
+
+    captureState();
+    hasInteractionRef.current = true;
+    setSave((current) => ({
+      ...current,
+      placements: [...solverResult.solution!]
+    }));
+    setStats((s) => ({ ...s, steps: s.steps + solution.length }));
+    setShowSolverDialog(false);
+    setHintHighlight(new Set());
+    playSound("place");
+  }
+
+  function applyNextStep() {
+    if (!hintResult?.nextPlacement) return;
+
+    const next = hintResult.nextPlacement;
+    captureState();
+    hasInteractionRef.current = true;
+    setSave((current) => ({
+      ...current,
+      placements: [...current.placements, next]
+    }));
+    setStats((s) => ({ ...s, steps: s.steps + 1 }));
+    setActivePiece(null);
+    setRotation(0);
+    setHintHighlight(new Set());
+    setHintResult(null);
+    playSound("place");
+  }
+
+  function clearHint() {
+    setHintResult(null);
+    setHintHighlight(new Set());
   }
 
   function nextLevel() {
