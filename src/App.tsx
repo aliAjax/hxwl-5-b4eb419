@@ -954,6 +954,13 @@ export default function App() {
   const undoStackRef = useRef<HistoryState[]>(save.undoStack || []);
   const redoStackRef = useRef<HistoryState[]>(save.redoStack || []);
   const isPerformingUndoRedoRef = useRef(false);
+  const latestStateRef = useRef({
+    placements: save.placements,
+    activePiece,
+    rotation,
+    stats,
+    showComplete
+  });
 
   const tutorialRefs: TutorialRefs = {
     pieces: useRef<HTMLDivElement>(null),
@@ -991,6 +998,16 @@ export default function App() {
     }
   }, [view, showTutorial]);
 
+  useEffect(() => {
+    latestStateRef.current = {
+      placements: save.placements,
+      activePiece,
+      rotation,
+      stats,
+      showComplete
+    };
+  }, [save.placements, activePiece, rotation, stats, showComplete]);
+
   const playSound = (kind: SoundType) => {
     if (settings.soundEnabled) {
       sound.ensureCtx();
@@ -1008,12 +1025,13 @@ export default function App() {
 
   function captureState() {
     if (isPerformingUndoRedoRef.current) return;
+    const latest = latestStateRef.current;
     const state: HistoryState = {
-      placements: [...save.placements],
-      activePiece,
-      rotation,
-      stats: { ...stats },
-      showComplete
+      placements: [...latest.placements],
+      activePiece: latest.activePiece,
+      rotation: latest.rotation,
+      stats: { ...latest.stats },
+      showComplete: latest.showComplete
     };
     undoStackRef.current.push(state);
     redoStackRef.current = [];
@@ -1037,12 +1055,13 @@ export default function App() {
     if (!canUndo()) return;
     isPerformingUndoRedoRef.current = true;
     const prevState = undoStackRef.current.pop()!;
+    const latest = latestStateRef.current;
     const currentState: HistoryState = {
-      placements: [...save.placements],
-      activePiece,
-      rotation,
-      stats: { ...stats },
-      showComplete
+      placements: [...latest.placements],
+      activePiece: latest.activePiece,
+      rotation: latest.rotation,
+      stats: { ...latest.stats },
+      showComplete: latest.showComplete
     };
     redoStackRef.current.push(currentState);
 
@@ -1065,12 +1084,13 @@ export default function App() {
     if (!canRedo()) return;
     isPerformingUndoRedoRef.current = true;
     const nextState = redoStackRef.current.pop()!;
+    const latest = latestStateRef.current;
     const currentState: HistoryState = {
-      placements: [...save.placements],
-      activePiece,
-      rotation,
-      stats: { ...stats },
-      showComplete
+      placements: [...latest.placements],
+      activePiece: latest.activePiece,
+      rotation: latest.rotation,
+      stats: { ...latest.stats },
+      showComplete: latest.showComplete
     };
     undoStackRef.current.push(currentState);
 
