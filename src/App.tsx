@@ -3,11 +3,15 @@ import {
   generateDailyChallenge,
   getDailyRecord,
   updateDailyRecord,
+  updateHistoryRecord,
   touchDailyPlayed,
+  touchHistoryPlayed,
   getTodayDateString,
   calculateStreak,
   getDailyRecordsForDays,
   DAILY_CHALLENGE_LEVEL_ID,
+  isHistoryReplayLevelId,
+  extractDateFromHistoryLevelId,
   NO_RECORD,
   type DailyChallengeRecord,
   type DailyRecordWithDate
@@ -775,7 +779,8 @@ function CompleteModal({
   newRecords,
   onClose,
   onNext,
-  onBackToHall
+  onBackToHall,
+  isHistoryReplay
 }: {
   open: boolean;
   levelName: string;
@@ -785,16 +790,22 @@ function CompleteModal({
   onClose: () => void;
   onNext: () => void;
   onBackToHall: () => void;
+  isHistoryReplay?: boolean;
 }) {
   if (!open) return null;
   const hasAnyRecord = newRecords.newMinSteps || newRecords.newMinRotations || newRecords.firstNoReset;
   return (
     <div className="complete-overlay" onClick={onClose}>
-      <div className="complete-panel" onClick={(e) => e.stopPropagation()}>
+      <div className={`complete-panel ${isHistoryReplay ? "history-replay-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="complete-header">
-          <div className="complete-icon">✦</div>
-          <h2 className="complete-title">符文已闭合</h2>
+          <div className={`complete-icon ${isHistoryReplay ? "history-icon" : ""}`}>{isHistoryReplay ? "⏪" : "✦"}</div>
+          <h2 className={`complete-title ${isHistoryReplay ? "history-title" : ""}`}>
+            {isHistoryReplay ? "历史回放完成" : "符文已闭合"}
+          </h2>
           <p className="complete-level">{levelName}</p>
+          {isHistoryReplay && (
+            <p className="complete-history-note">历史回放不影响每日挑战连续天数</p>
+          )}
         </div>
         <div className="complete-stats">
           <div className={`stat-item ${newRecords.newMinSteps ? "new-record" : ""}`}>
@@ -997,13 +1008,15 @@ function DailyCalendarPanel({
   onClose,
   todayDate,
   refreshKey,
-  streak
+  streak,
+  onSelectHistory
 }: {
   open: boolean;
   onClose: () => void;
   todayDate: string;
   refreshKey: number;
   streak: number;
+  onSelectHistory: (dateStr: string) => void;
 }) {
   const records = useMemo<DailyRecordWithDate[]>(() => {
     if (!open) return [];
@@ -1013,7 +1026,11 @@ function DailyCalendarPanel({
   if (!open) return null;
 
   const completedDays = records.filter((r) => r.record.completed).length;
-  const playedDays = records.filter((r) => r.record.lastPlayed).length;
+  const playedDays = records.filter((r) => r.record.lastPlayed || r.record.historyLastPlayed).length;
+
+  function isPastDate(dateStr: string): boolean {
+    return dateStr < todayDate;
+  }
 
   return (
     <div className="daily-calendar-overlay" onClick={onClose}>
@@ -1038,18 +1055,25 @@ function DailyCalendarPanel({
             <span className="calendar-summary-label">游玩天数</span>
           </div>
         </div>
+        <div className="calendar-legend">
+          <span className="legend-item"><span className="legend-dot daily-dot" /> 每日挑战</span>
+          <span className="legend-item"><span className="legend-dot history-dot" /> 历史回放</span>
+        </div>
         <div className="daily-calendar-list">
           {records.map(({ date, record }) => {
             const isToday = date === todayDate;
+            const isPast = isPastDate(date);
             const hasData = record.completed || record.lastPlayed;
+            const hasHistoryData = record.historyMinSteps < NO_RECORD || record.historyLastPlayed;
             return (
               <div
                 key={date}
-                className={`calendar-day-row ${record.completed ? "completed" : ""} ${isToday ? "today" : ""} ${!hasData ? "empty" : ""}`}
+                className={`calendar-day-row ${record.completed ? "completed" : ""} ${isToday ? "today" : ""} ${!hasData && !hasHistoryData ? "empty" : ""} ${isPast ? "past-date" : ""}`}
               >
                 <div className="calendar-day-date">
                   <span className="calendar-day-label">{date.slice(5)}</span>
                   {isToday && <span className="calendar-today-badge">今天</span>}
+                  {isPast && !isToday && <span className="calendar-history-badge">可回放</span>}
                 </div>
                 <div className="calendar-day-status">
                   {record.completed ? (
@@ -1057,18 +1081,20 @@ function DailyCalendarPanel({
                   ) : record.lastPlayed ? (
                     <span className="calendar-status played">已游玩</span>
                   ) : (
-                    <span className="calendar-status none">—</span>
+                    <span className="calendar-status none">未挑战</span>
                   )}
                 </div>
                 <div className="calendar-day-details">
                   {record.completed && record.minSteps < NO_RECORD && (
                     <span className="calendar-detail">
-                      步数 <strong>{record.minSteps}</strong>
+                      <span className="detail-tag daily-tag">当日</span>
+                      步数 <strong>{record.minSteps}</strong> / 旋转 <strong>{record.minRotations}</strong>
                     </span>
                   )}
-                  {record.completed && record.minRotations < NO_RECORD && (
-                    <span className="calendar-detail">
-                      旋转 <strong>{record.minRotations}</strong>
+                  {hasHistoryData && (
+                    <span className="calendar-detail history-detail">
+                      <span className="detail-tag history-tag">回放</span>
+                      步数 <strong>{record.historyMinSteps < NO_RECORD ? record.historyMinSteps : "—"}</strong> / 旋转 <strong>{record.historyMinRotations < NO_RECORD ? record.historyMinRotations : "—"}</strong>
                     </span>
                   )}
                   {record.lastPlayed && (
@@ -1076,7 +1102,21 @@ function DailyCalendarPanel({
                       {formatLastPlayed(record.lastPlayed)}
                     </span>
                   )}
+                  {record.historyLastPlayed && !record.lastPlayed && (
+                    <span className="calendar-detail-time">
+                      回放: {formatLastPlayed(record.historyLastPlayed)}
+                    </span>
+                  )}
                 </div>
+                {isPast && (
+                  <button
+                    className="calendar-replay-btn"
+                    onClick={() => onSelectHistory(date)}
+                    title={`回放 ${date} 的挑战`}
+                  >
+                    ⏪ 回放
+                  </button>
+                )}
               </div>
             );
           })}
@@ -1739,6 +1779,9 @@ export default function App() {
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
   const [dailyRecord, setDailyRecord] = useState<DailyChallengeRecord>(() => getDailyRecord());
+  const [historyReplayLevel, setHistoryReplayLevel] = useState<Level | null>(null);
+  const [historyReplayDate, setHistoryReplayDate] = useState<string | null>(null);
+  const [historyReplayRecord, setHistoryReplayRecord] = useState<DailyChallengeRecord | null>(null);
   const [hallFilters, setHallFilters] = useState<HallFilters>({
     completion: "all",
     recency: "all",
@@ -1756,17 +1799,21 @@ export default function App() {
   const [dailyCalendarRefreshKey, setDailyCalendarRefreshKey] = useState(0);
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
+  const isHistoryReplay = isHistoryReplayLevelId(save.levelId);
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
   const level: Level = useMemo(() => {
     if (isDailyChallenge) {
       return dailyChallengeLevel;
+    }
+    if (isHistoryReplay && historyReplayLevel) {
+      return historyReplayLevel;
     }
     if (isWorkshopLevel) {
       const found = workshopLevels.find((item) => item.id === save.levelId);
       if (found) return found;
     }
     return levels.find((item) => item.id === save.levelId) ?? levels[0];
-  }, [isDailyChallenge, isWorkshopLevel, dailyChallengeLevel, workshopLevels, save.levelId]);
+  }, [isDailyChallenge, isHistoryReplay, isWorkshopLevel, dailyChallengeLevel, historyReplayLevel, workshopLevels, save.levelId]);
 
   useEffect(() => {
     function checkDateChange() {
@@ -2058,6 +2105,15 @@ export default function App() {
         setDailyRecord(record);
         setDailyStreak(calculateStreak());
         setDailyCalendarRefreshKey((key) => key + 1);
+      } else if (isHistoryReplay && historyReplayDate) {
+        const record = updateHistoryRecord(historyReplayDate, stats);
+        setNewRecords({
+          newMinSteps: record.historyMinSteps === stats.steps,
+          newMinRotations: record.historyMinRotations === stats.rotations,
+          firstNoReset: false
+        });
+        setHistoryReplayRecord(record);
+        setDailyCalendarRefreshKey((key) => key + 1);
       } else {
         const { records } = updateAchievement(level.id, stats);
         setNewRecords(records);
@@ -2066,7 +2122,7 @@ export default function App() {
       setShowComplete(true);
     }
     prevSolvedRef.current = solved;
-  }, [solved, isDailyChallenge, level.id, stats]);
+  }, [solved, isDailyChallenge, isHistoryReplay, historyReplayDate, level.id, stats]);
 
   function place(row: number, col: number) {
     if (!activePiece) return;
@@ -2111,6 +2167,17 @@ export default function App() {
     setDailyStreak(calculateStreak());
     setDailyCalendarRefreshKey((key) => key + 1);
     switchLevel(DAILY_CHALLENGE_LEVEL_ID);
+  }
+
+  function switchToHistoryReplay(dateStr: string) {
+    touchHistoryPlayed(dateStr);
+    const historyLevel = generateDailyChallenge(dateStr, true);
+    setHistoryReplayLevel(historyLevel);
+    setHistoryReplayDate(dateStr);
+    setHistoryReplayRecord(getDailyRecord(dateStr));
+    setDailyCalendarRefreshKey((key) => key + 1);
+    setDailyCalendarOpen(false);
+    switchLevel(historyLevel.id);
   }
 
   function playWorkshopLevel(newLevel: Level) {
@@ -2207,7 +2274,7 @@ export default function App() {
   }
 
   function nextLevel() {
-    if (isDailyChallenge) {
+    if (isDailyChallenge || isHistoryReplay) {
       setShowComplete(false);
       backToHall();
       return;
@@ -2224,7 +2291,7 @@ export default function App() {
 
   const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
   const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
-  const hasNextLevel = isDailyChallenge ? false : currentLevelIndex < levels.length - 1;
+  const hasNextLevel = isDailyChallenge || isHistoryReplay ? false : currentLevelIndex < levels.length - 1;
 
   const hintAnalysis = useMemo(() => {
     const missingTargetCells: Cell[] = [];
@@ -2293,6 +2360,7 @@ export default function App() {
           todayDate={todayDate}
           refreshKey={dailyCalendarRefreshKey}
           streak={dailyStreak}
+          onSelectHistory={switchToHistoryReplay}
         />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
         <AchievementPanel open={achievementsOpen} levels={allLevels} onClose={() => setAchievementsOpen(false)} />
@@ -2336,11 +2404,15 @@ export default function App() {
 
   const levelTag = isDailyChallenge
     ? "✦ 每日挑战"
+    : isHistoryReplay
+    ? "⏪ 历史回放"
     : isWorkshopLevel
     ? "✨ 工坊关卡"
     : "符文拼接室";
   const heroTitle = isDailyChallenge
     ? `今日符文：${todayDate}`
+    : isHistoryReplay && historyReplayDate
+    ? `回放符文：${historyReplayDate}`
     : isWorkshopLevel
     ? `挑战自创：${level.name}`
     : "把碎片压进发光的格子";
@@ -2349,13 +2421,15 @@ export default function App() {
     <main className="runes">
       <section className="hero">
         <div>
-          <p className="eyebrow">{levelTag}</p>
+          <p className={`eyebrow ${isHistoryReplay ? "history-eyebrow" : ""} ${isDailyChallenge ? "daily-eyebrow" : ""}`}>{levelTag}</p>
           <h1>{heroTitle}</h1>
         </div>
         <div className="game-header">
-          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""} ${isWorkshopLevel ? "workshop-badge" : ""}`}>
+          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""} ${isHistoryReplay ? "history-badge" : ""} ${isWorkshopLevel ? "workshop-badge" : ""}`}>
             {isDailyChallenge
               ? "✦ "
+              : isHistoryReplay
+              ? "⏪ "
               : isWorkshopLevel
               ? "✨ "
               : "当前："}
@@ -2525,6 +2599,7 @@ export default function App() {
         onClose={() => setShowComplete(false)}
         onNext={nextLevel}
         onBackToHall={backToHall}
+        isHistoryReplay={isHistoryReplay}
       />
 
       <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />

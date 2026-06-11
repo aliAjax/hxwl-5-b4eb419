@@ -8,11 +8,28 @@ export type DailyChallengeRecord = {
   minSteps: number;
   minRotations: number;
   lastPlayed?: string;
+  historyMinSteps: number;
+  historyMinRotations: number;
+  historyLastPlayed?: string;
 };
 
 export type DailyChallengeSave = Record<string, DailyChallengeRecord>;
 
 export const DAILY_CHALLENGE_LEVEL_ID = "daily-challenge";
+export const HISTORY_REPLAY_LEVEL_ID_PREFIX = "history-replay-";
+
+export function getHistoryReplayLevelId(dateStr: string): string {
+  return `${HISTORY_REPLAY_LEVEL_ID_PREFIX}${dateStr}`;
+}
+
+export function isHistoryReplayLevelId(levelId: string): boolean {
+  return levelId.startsWith(HISTORY_REPLAY_LEVEL_ID_PREFIX);
+}
+
+export function extractDateFromHistoryLevelId(levelId: string): string | null {
+  if (!isHistoryReplayLevelId(levelId)) return null;
+  return levelId.slice(HISTORY_REPLAY_LEVEL_ID_PREFIX.length);
+}
 
 function loadDailySave(): DailyChallengeSave {
   try {
@@ -40,7 +57,9 @@ function createEmptyRecord(): DailyChallengeRecord {
   return {
     completed: false,
     minSteps: NO_RECORD,
-    minRotations: NO_RECORD
+    minRotations: NO_RECORD,
+    historyMinSteps: NO_RECORD,
+    historyMinRotations: NO_RECORD
   };
 }
 
@@ -51,7 +70,10 @@ function normalizeRecord(record: DailyChallengeRecord | null | undefined): Daily
     completedAt: record.completedAt,
     minSteps: typeof record.minSteps === "number" && isFinite(record.minSteps) ? record.minSteps : NO_RECORD,
     minRotations: typeof record.minRotations === "number" && isFinite(record.minRotations) ? record.minRotations : NO_RECORD,
-    lastPlayed: record.lastPlayed
+    lastPlayed: record.lastPlayed,
+    historyMinSteps: typeof record.historyMinSteps === "number" && isFinite(record.historyMinSteps) ? record.historyMinSteps : NO_RECORD,
+    historyMinRotations: typeof record.historyMinRotations === "number" && isFinite(record.historyMinRotations) ? record.historyMinRotations : NO_RECORD,
+    historyLastPlayed: record.historyLastPlayed
   };
 }
 
@@ -70,9 +92,30 @@ export function updateDailyRecord(stats: Stats): DailyChallengeRecord {
     completedAt: existing.completedAt ?? new Date().toISOString(),
     minSteps: Math.min(existing.minSteps, stats.steps),
     minRotations: Math.min(existing.minRotations, stats.rotations),
-    lastPlayed: new Date().toISOString()
+    lastPlayed: new Date().toISOString(),
+    historyMinSteps: existing.historyMinSteps,
+    historyMinRotations: existing.historyMinRotations,
+    historyLastPlayed: existing.historyLastPlayed
   };
   save[date] = updated;
+  saveDailySave(save);
+  return updated;
+}
+
+export function updateHistoryRecord(dateStr: string, stats: Stats): DailyChallengeRecord {
+  const save = loadDailySave();
+  const existing = normalizeRecord(save[dateStr]);
+  const updated: DailyChallengeRecord = {
+    completed: existing.completed,
+    completedAt: existing.completedAt,
+    minSteps: existing.minSteps,
+    minRotations: existing.minRotations,
+    lastPlayed: existing.lastPlayed,
+    historyMinSteps: Math.min(existing.historyMinSteps, stats.steps),
+    historyMinRotations: Math.min(existing.historyMinRotations, stats.rotations),
+    historyLastPlayed: new Date().toISOString()
+  };
+  save[dateStr] = updated;
   saveDailySave(save);
   return updated;
 }
@@ -81,7 +124,20 @@ export function touchDailyPlayed() {
   const date = getTodayDateString();
   const save = loadDailySave();
   const existing = normalizeRecord(save[date]);
-  save[date] = { ...existing, lastPlayed: new Date().toISOString() };
+  save[date] = {
+    ...existing,
+    lastPlayed: new Date().toISOString()
+  };
+  saveDailySave(save);
+}
+
+export function touchHistoryPlayed(dateStr: string) {
+  const save = loadDailySave();
+  const existing = normalizeRecord(save[dateStr]);
+  save[dateStr] = {
+    ...existing,
+    historyLastPlayed: new Date().toISOString()
+  };
   saveDailySave(save);
 }
 
@@ -208,7 +264,7 @@ function rotateCells(cells: Cell[], turns: number): Cell[] {
   return next;
 }
 
-export function generateDailyChallenge(dateStr?: string): Level {
+export function generateDailyChallenge(dateStr?: string, isHistoryReplay: boolean = false): Level {
   const date = dateStr ?? getTodayDateString();
   const seed = dateToSeed(date);
   const rand = mulberry32(seed);
@@ -374,10 +430,14 @@ export function generateDailyChallenge(dateStr?: string): Level {
     };
   });
 
+  const levelId = isHistoryReplay ? getHistoryReplayLevelId(date) : DAILY_CHALLENGE_LEVEL_ID;
+  const levelName = isHistoryReplay ? `历史回放 ${date}` : `每日挑战 ${date}`;
+  const pieceIdPrefix = isHistoryReplay ? `history-${date}-` : "daily-";
+
   if (pieces.length === 0) {
     return {
-      id: DAILY_CHALLENGE_LEVEL_ID,
-      name: `每日挑战 ${date}`,
+      id: levelId,
+      name: levelName,
       size: 5,
       target: [
         [1, 1],
@@ -387,7 +447,7 @@ export function generateDailyChallenge(dateStr?: string): Level {
       ],
       pieces: [
         {
-          id: "daily-fallback",
+          id: `${pieceIdPrefix}fallback`,
           name: "方符",
           color: "#d7b84f",
           cells: [
@@ -401,11 +461,16 @@ export function generateDailyChallenge(dateStr?: string): Level {
     };
   }
 
+  const piecesWithIds = pieces.map((p, i) => ({
+    ...p,
+    id: `${pieceIdPrefix}${i}`
+  }));
+
   return {
-    id: DAILY_CHALLENGE_LEVEL_ID,
-    name: `每日挑战 ${date}`,
+    id: levelId,
+    name: levelName,
     size,
     target,
-    pieces
+    pieces: piecesWithIds
   };
 }
