@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  generateDailyChallenge,
+  getDailyRecord,
+  updateDailyRecord,
+  touchDailyPlayed,
+  getTodayDateString,
+  DAILY_CHALLENGE_LEVEL_ID,
+  type DailyChallengeRecord
+} from "./dailyChallenge";
 
 type Cell = [number, number];
 
@@ -844,13 +853,95 @@ function LevelPreview({ level }: { level: Level }) {
   );
 }
 
+function DailyChallengeCard({
+  onSelect,
+  dailyRecord,
+  todayDate
+}: {
+  onSelect: () => void;
+  dailyRecord: DailyChallengeRecord;
+  todayDate: string;
+}) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  const msUntilTomorrow = tomorrow.getTime() - now.getTime();
+  const hours = Math.floor(msUntilTomorrow / 3600000);
+  const minutes = Math.floor((msUntilTomorrow % 3600000) / 60000);
+  const countdownText = `${hours}小时${minutes}分后刷新`;
+
+  return (
+    <button className="daily-challenge-card" onClick={onSelect}>
+      <div className="daily-card-glow" />
+      <div className="daily-card-content">
+        <div className="daily-card-header">
+          <div>
+            <p className="eyebrow daily-eyebrow">
+              <span className="sparkle-icon">✦</span>
+              每日挑战
+            </p>
+            <h2 className="daily-title">{todayDate}</h2>
+          </div>
+          <div className="daily-countdown">
+            <span className="countdown-label">距刷新</span>
+            <span className="countdown-value">{countdownText}</span>
+          </div>
+        </div>
+        <div className="daily-card-body">
+          <div className="daily-description">
+            今天的符文由日期生成，独一无二，次日更新
+          </div>
+          <div className="daily-stats">
+            {dailyRecord.completed ? (
+              <>
+                <span className="daily-status completed">
+                  <span className="status-check">✓</span>
+                  今日已完成
+                </span>
+                <span className="daily-record-item">
+                  最低步数 <strong>{dailyRecord.minSteps}</strong>
+                </span>
+                <span className="daily-record-item">
+                  最低旋转 <strong>{dailyRecord.minRotations}</strong>
+                </span>
+              </>
+            ) : (
+              <span className="daily-status pending">⚡ 尚未挑战</span>
+            )}
+            {dailyRecord.lastPlayed && (
+              <span className="daily-last-played">
+                最近游玩：{formatLastPlayed(dailyRecord.lastPlayed)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="daily-card-footer">
+          <span className="daily-cta">
+            {dailyRecord.completed ? "再来一次 →" : "开始挑战 →"}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function LevelSelectHall({
   levels,
   save,
   onSelectLevel,
   onOpenTutorial,
   onOpenSettings,
-  onOpenAchievements
+  onOpenAchievements,
+  onSelectDaily,
+  dailyRecord,
+  todayDate
 }: {
   levels: Level[];
   save: Save;
@@ -858,6 +949,9 @@ function LevelSelectHall({
   onOpenTutorial: () => void;
   onOpenSettings: () => void;
   onOpenAchievements: () => void;
+  onSelectDaily: () => void;
+  dailyRecord: DailyChallengeRecord;
+  todayDate: string;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length;
@@ -885,6 +979,13 @@ function LevelSelectHall({
           </div>
         </div>
       </div>
+
+      <DailyChallengeCard
+        onSelect={onSelectDaily}
+        dailyRecord={dailyRecord}
+        todayDate={todayDate}
+      />
+
       <div className="level-cards">
         {levels.map((item, index) => {
           const isCompleted = save.completed.includes(item.id);
@@ -948,7 +1049,29 @@ export default function App() {
   const [showHint, setShowHint] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [newRecords, setNewRecords] = useState<NewRecords>({ newMinSteps: false, newMinRotations: false, firstNoReset: false });
-  const level = levels.find((item) => item.id === save.levelId) ?? levels[0];
+  const [todayDate, setTodayDate] = useState(getTodayDateString);
+  const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
+  const [dailyRecord, setDailyRecord] = useState<DailyChallengeRecord>(() => getDailyRecord());
+  const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
+  const level: Level = useMemo(() => {
+    if (isDailyChallenge) {
+      return dailyChallengeLevel;
+    }
+    return levels.find((item) => item.id === save.levelId) ?? levels[0];
+  }, [isDailyChallenge, dailyChallengeLevel, save.levelId]);
+
+  useEffect(() => {
+    function checkDateChange() {
+      const newDate = getTodayDateString();
+      if (newDate !== todayDate) {
+        setTodayDate(newDate);
+        setDailyChallengeLevel(generateDailyChallenge(newDate));
+        setDailyRecord(getDailyRecord(newDate));
+      }
+    }
+    const interval = setInterval(checkDateChange, 60000);
+    return () => clearInterval(interval);
+  }, [todayDate]);
   const prevSolvedRef = useRef(false);
   const hasInteractionRef = useRef(false);
   const undoStackRef = useRef<HistoryState[]>(save.undoStack || []);
@@ -1183,20 +1306,30 @@ export default function App() {
   }, [level.target, occupied]);
 
   useEffect(() => {
-    if (solved && !save.completed.includes(level.id)) {
+    if (solved && !isDailyChallenge && !save.completed.includes(level.id)) {
       setSave((current) => ({ ...current, completed: [...current.completed, level.id] }));
     }
-  }, [level.id, save.completed, solved]);
+  }, [level.id, save.completed, solved, isDailyChallenge]);
 
   useEffect(() => {
     if (solved && !prevSolvedRef.current && hasInteractionRef.current) {
-      const { records } = updateAchievement(level.id, stats);
-      setNewRecords(records);
+      if (isDailyChallenge) {
+        const record = updateDailyRecord(stats);
+        setNewRecords({
+          newMinSteps: record.minSteps === stats.steps,
+          newMinRotations: record.minRotations === stats.rotations,
+          firstNoReset: false
+        });
+        setDailyRecord(record);
+      } else {
+        const { records } = updateAchievement(level.id, stats);
+        setNewRecords(records);
+      }
       playSound("success");
       setShowComplete(true);
     }
     prevSolvedRef.current = solved;
-  }, [solved]);
+  }, [solved, isDailyChallenge, level.id, stats]);
 
   function place(row: number, col: number) {
     if (!activePiece) return;
@@ -1231,6 +1364,12 @@ export default function App() {
     setShowComplete(false);
     setShowHint(false);
     setView("game");
+  }
+
+  function switchToDailyChallenge() {
+    touchDailyPlayed();
+    setDailyRecord(getDailyRecord());
+    switchLevel(DAILY_CHALLENGE_LEVEL_ID);
   }
 
   function backToHall() {
@@ -1275,6 +1414,11 @@ export default function App() {
   }
 
   function nextLevel() {
+    if (isDailyChallenge) {
+      setShowComplete(false);
+      backToHall();
+      return;
+    }
     const currentIndex = levels.findIndex((item) => item.id === level.id);
     const nextIndex = currentIndex + 1;
     if (nextIndex < levels.length) {
@@ -1287,7 +1431,7 @@ export default function App() {
 
   const targetSet = useMemo(() => new Set(level.target.map(([r, c]) => cellKey(r, c))), [level.target]);
   const currentLevelIndex = levels.findIndex((item) => item.id === level.id);
-  const hasNextLevel = currentLevelIndex < levels.length - 1;
+  const hasNextLevel = isDailyChallenge ? false : currentLevelIndex < levels.length - 1;
 
   const hintAnalysis = useMemo(() => {
     const missingTargetCells: Cell[] = [];
@@ -1326,7 +1470,17 @@ export default function App() {
   if (view === "hall") {
     return (
       <main className="runes">
-        <LevelSelectHall levels={levels} save={save} onSelectLevel={switchLevel} onOpenTutorial={openTutorial} onOpenSettings={() => setSettingsOpen(true)} onOpenAchievements={() => setAchievementsOpen(true)} />
+        <LevelSelectHall
+          levels={levels}
+          save={save}
+          onSelectLevel={switchLevel}
+          onOpenTutorial={openTutorial}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAchievements={() => setAchievementsOpen(true)}
+          onSelectDaily={switchToDailyChallenge}
+          dailyRecord={dailyRecord}
+          todayDate={todayDate}
+        />
         <SettingsPanel open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onChange={setSettings} />
         <AchievementPanel open={achievementsOpen} levels={levels} onClose={() => setAchievementsOpen(false)} />
       </main>
@@ -1337,11 +1491,14 @@ export default function App() {
     <main className="runes">
       <section className="hero">
         <div>
-          <p className="eyebrow">符文拼接室</p>
-          <h1>把碎片压进发光的格子</h1>
+          <p className="eyebrow">{isDailyChallenge ? "✦ 每日挑战" : "符文拼接室"}</p>
+          <h1>{isDailyChallenge ? `今日符文：${todayDate}` : "把碎片压进发光的格子"}</h1>
         </div>
         <div className="game-header">
-          <span className="current-level">当前：{level.name}</span>
+          <span className={`current-level ${isDailyChallenge ? "daily-badge" : ""}`}>
+            {isDailyChallenge ? "✦ " : "当前："}
+            {level.name}
+          </span>
           <button className="settings-btn" onClick={() => setSettingsOpen(true)}>
             ⚙ 设置
           </button>
