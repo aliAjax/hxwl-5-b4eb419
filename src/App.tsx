@@ -477,6 +477,18 @@ export type Stats = {
 
 type View = "hall" | "game";
 
+type CompletionFilter = "all" | "completed" | "uncompleted";
+type RecencyFilter = "all" | "recent";
+type SourceFilter = "all" | "preset" | "workshop";
+type SortKey = "default" | "name-asc" | "name-desc" | "target-asc" | "target-desc";
+
+type HallFilters = {
+  completion: CompletionFilter;
+  recency: RecencyFilter;
+  source: SourceFilter;
+  sort: SortKey;
+};
+
 type TutorialRefs = {
   pieces: React.RefObject<HTMLDivElement | null>;
   rotate: React.RefObject<HTMLButtonElement | null>;
@@ -933,10 +945,14 @@ function DailyChallengeCard({
   );
 }
 
+type LevelWithSource = Level & { source: "preset" | "workshop"; presetIndex?: number };
+
 function LevelSelectHall({
   levels,
   workshopLevels,
   save,
+  filters,
+  onFiltersChange,
   onSelectLevel,
   onOpenTutorial,
   onOpenSettings,
@@ -949,6 +965,8 @@ function LevelSelectHall({
   levels: Level[];
   workshopLevels: Level[];
   save: Save;
+  filters: HallFilters;
+  onFiltersChange: (filters: HallFilters) => void;
   onSelectLevel: (levelId: string) => void;
   onOpenTutorial: () => void;
   onOpenSettings: () => void;
@@ -960,6 +978,120 @@ function LevelSelectHall({
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length + workshopLevels.length;
+  const RECENT_DAYS = 7;
+
+  const allLevelsWithSource = useMemo<LevelWithSource[]>(() => {
+    const preset: LevelWithSource[] = levels.map((l, i) => ({ ...l, source: "preset", presetIndex: i }));
+    const workshop: LevelWithSource[] = workshopLevels.map((l) => ({ ...l, source: "workshop" }));
+    return [...preset, ...workshop];
+  }, [levels, workshopLevels]);
+
+  const recentCutoff = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - RECENT_DAYS);
+    return d.getTime();
+  }, []);
+
+  const displayedLevels = useMemo(() => {
+    let result = [...allLevelsWithSource];
+
+    if (filters.completion === "completed") {
+      result = result.filter((l) => save.completed.includes(l.id));
+    } else if (filters.completion === "uncompleted") {
+      result = result.filter((l) => !save.completed.includes(l.id));
+    }
+
+    if (filters.recency === "recent") {
+      result = result.filter((l) => {
+        const lp = save.lastPlayed[l.id];
+        if (!lp) return false;
+        return new Date(lp).getTime() >= recentCutoff;
+      });
+    }
+
+    if (filters.source === "preset") {
+      result = result.filter((l) => l.source === "preset");
+    } else if (filters.source === "workshop") {
+      result = result.filter((l) => l.source === "workshop");
+    }
+
+    switch (filters.sort) {
+      case "name-asc":
+        result.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+        break;
+      case "name-desc":
+        result.sort((a, b) => b.name.localeCompare(a.name, "zh-CN"));
+        break;
+      case "target-asc":
+        result.sort((a, b) => a.target.length - b.target.length);
+        break;
+      case "target-desc":
+        result.sort((a, b) => b.target.length - a.target.length);
+        break;
+      default:
+        break;
+    }
+
+    return result;
+  }, [allLevelsWithSource, filters, save.completed, save.lastPlayed, recentCutoff]);
+
+  const updateFilter = <K extends keyof HallFilters>(key: K, value: HallFilters[K]) => {
+    onFiltersChange({ ...filters, [key]: value });
+  };
+
+  const clearAllFilters = () => {
+    onFiltersChange({ completion: "all", recency: "all", source: "all", sort: "default" });
+  };
+
+  const hasActiveFilters =
+    filters.completion !== "all" ||
+    filters.recency !== "all" ||
+    filters.source !== "all" ||
+    filters.sort !== "default";
+
+  function renderLevelCard(item: LevelWithSource) {
+    const isCompleted = save.completed.includes(item.id);
+    const lastPlayed = save.lastPlayed[item.id];
+    return (
+      <button
+        className={`level-card ${isCompleted ? "completed" : ""}`}
+        key={item.id}
+        onClick={() => onSelectLevel(item.id)}
+      >
+        <div className="card-header">
+          {item.source === "preset" && item.presetIndex !== undefined ? (
+            <span className="level-index">{String(item.presetIndex + 1).padStart(2, "0")}</span>
+          ) : (
+            <span className="workshop-level-tag">✨ 工坊</span>
+          )}
+          {isCompleted && <span className="completed-badge">✓ 已完成</span>}
+        </div>
+        <h3 className="level-name">{item.name}</h3>
+        <LevelPreview level={item} />
+        <div className="level-meta">
+          <span className="meta-item">
+            <i className="meta-icon board-icon" />
+            {item.size}×{item.size} 棋盘
+          </span>
+          <span className="meta-item">
+            <i className="meta-icon target-icon" />
+            {item.target.length} 目标格
+          </span>
+          <span className="meta-item">
+            <i className="meta-icon piece-icon" />
+            {item.pieces.length} 个碎片
+          </span>
+        </div>
+        <div className="level-footer">
+          <span className="last-played">
+            <i className="meta-icon clock-icon" />
+            {formatLastPlayed(lastPlayed)}
+          </span>
+          <span className="enter-arrow">开始 →</span>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <section className="level-hall">
@@ -994,93 +1126,115 @@ function LevelSelectHall({
         todayDate={todayDate}
       />
 
-      <div className="level-section-header">
-        <h2 className="level-section-title">预设关卡</h2>
-      </div>
-      <div className="level-cards">
-        {levels.map((item, index) => {
-          const isCompleted = save.completed.includes(item.id);
-          const lastPlayed = save.lastPlayed[item.id];
-          return (
+      <div className="filters-panel">
+        <div className="filter-group">
+          <span className="filter-label">完成状态</span>
+          <div className="filter-chips">
             <button
-              className={`level-card ${isCompleted ? "completed" : ""}`}
-              key={item.id}
-              onClick={() => onSelectLevel(item.id)}
+              className={`filter-chip ${filters.completion === "all" ? "active" : ""}`}
+              onClick={() => updateFilter("completion", "all")}
             >
-              <div className="card-header">
-                <span className="level-index">{String(index + 1).padStart(2, "0")}</span>
-                {isCompleted && <span className="completed-badge">✓ 已完成</span>}
-              </div>
-              <h3 className="level-name">{item.name}</h3>
-              <LevelPreview level={item} />
-              <div className="level-meta">
-                <span className="meta-item">
-                  <i className="meta-icon board-icon" />
-                  {item.size}×{item.size} 棋盘
-                </span>
-                <span className="meta-item">
-                  <i className="meta-icon piece-icon" />
-                  {item.pieces.length} 个碎片
-                </span>
-              </div>
-              <div className="level-footer">
-                <span className="last-played">
-                  <i className="meta-icon clock-icon" />
-                  {formatLastPlayed(lastPlayed)}
-                </span>
-                <span className="enter-arrow">开始 →</span>
-              </div>
+              全部
             </button>
-          );
-        })}
+            <button
+              className={`filter-chip ${filters.completion === "completed" ? "active" : ""}`}
+              onClick={() => updateFilter("completion", "completed")}
+            >
+              ✓ 已完成
+            </button>
+            <button
+              className={`filter-chip ${filters.completion === "uncompleted" ? "active" : ""}`}
+              onClick={() => updateFilter("completion", "uncompleted")}
+            >
+              未完成
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <span className="filter-label">最近游玩</span>
+          <div className="filter-chips">
+            <button
+              className={`filter-chip ${filters.recency === "all" ? "active" : ""}`}
+              onClick={() => updateFilter("recency", "all")}
+            >
+              不限
+            </button>
+            <button
+              className={`filter-chip ${filters.recency === "recent" ? "active" : ""}`}
+              onClick={() => updateFilter("recency", "recent")}
+            >
+              近 {RECENT_DAYS} 天
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <span className="filter-label">关卡来源</span>
+          <div className="filter-chips">
+            <button
+              className={`filter-chip ${filters.source === "all" ? "active" : ""}`}
+              onClick={() => updateFilter("source", "all")}
+            >
+              全部
+            </button>
+            <button
+              className={`filter-chip ${filters.source === "preset" ? "active" : ""}`}
+              onClick={() => updateFilter("source", "preset")}
+            >
+              预设关卡
+            </button>
+            <button
+              className={`filter-chip ${filters.source === "workshop" ? "active" : ""}`}
+              onClick={() => updateFilter("source", "workshop")}
+            >
+              工坊关卡
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <span className="filter-label">排序</span>
+          <select
+            className="sort-select"
+            value={filters.sort}
+            onChange={(e) => updateFilter("sort", e.target.value as SortKey)}
+          >
+            <option value="default">默认顺序</option>
+            <option value="name-asc">名称 A→Z</option>
+            <option value="name-desc">名称 Z→A</option>
+            <option value="target-asc">目标格数量 升序</option>
+            <option value="target-desc">目标格数量 降序</option>
+          </select>
+        </div>
+
+        {hasActiveFilters && (
+          <button className="clear-filters-btn" onClick={clearAllFilters}>
+            清除筛选
+          </button>
+        )}
       </div>
 
-      {workshopLevels.length > 0 && (
-        <>
-          <div className="level-section-header">
-            <h2 className="level-section-title">
-              <span className="workshop-level-tag">✨ 工坊</span>
-              自创关卡（{workshopLevels.length}）
-            </h2>
-          </div>
-          <div className="level-cards">
-            {workshopLevels.map((item) => {
-              const isCompleted = save.completed.includes(item.id);
-              const lastPlayed = save.lastPlayed[item.id];
-              return (
-                <button
-                  className={`level-card ${isCompleted ? "completed" : ""}`}
-                  key={item.id}
-                  onClick={() => onSelectLevel(item.id)}
-                >
-                  <div className="card-header">
-                    <span className="workshop-level-tag">工坊</span>
-                    {isCompleted && <span className="completed-badge">✓ 已完成</span>}
-                  </div>
-                  <h3 className="level-name">{item.name}</h3>
-                  <LevelPreview level={item} />
-                  <div className="level-meta">
-                    <span className="meta-item">
-                      <i className="meta-icon board-icon" />
-                      {item.size}×{item.size} 棋盘
-                    </span>
-                    <span className="meta-item">
-                      <i className="meta-icon piece-icon" />
-                      {item.pieces.length} 个碎片
-                    </span>
-                  </div>
-                  <div className="level-footer">
-                    <span className="last-played">
-                      <i className="meta-icon clock-icon" />
-                      {formatLastPlayed(lastPlayed)}
-                    </span>
-                    <span className="enter-arrow">开始 →</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </>
+      <div className="level-section-header">
+        <h2 className="level-section-title">
+          关卡列表
+          <span className="result-count">（{displayedLevels.length} / {allLevelsWithSource.length}）</span>
+        </h2>
+      </div>
+
+      {displayedLevels.length > 0 ? (
+        <div className="level-cards">
+          {displayedLevels.map((item) => renderLevelCard(item))}
+        </div>
+      ) : (
+        <div className="empty-result">
+          <div className="empty-icon">🔍</div>
+          <h3 className="empty-title">没有符合条件的关卡</h3>
+          <p className="empty-desc">尝试调整筛选条件或清除筛选后重新查看</p>
+          <button className="clear-filters-btn primary" onClick={clearAllFilters}>
+            清除所有筛选
+          </button>
+        </div>
       )}
     </section>
   );
@@ -1132,6 +1286,12 @@ export default function App() {
   const [todayDate, setTodayDate] = useState(getTodayDateString);
   const [dailyChallengeLevel, setDailyChallengeLevel] = useState<Level>(() => generateDailyChallenge());
   const [dailyRecord, setDailyRecord] = useState<DailyChallengeRecord>(() => getDailyRecord());
+  const [hallFilters, setHallFilters] = useState<HallFilters>({
+    completion: "all",
+    recency: "all",
+    source: "all",
+    sort: "default"
+  });
   const allLevels = useMemo(() => [...levels, ...workshopLevels], [workshopLevels]);
   const isDailyChallenge = save.levelId === DAILY_CHALLENGE_LEVEL_ID;
   const isWorkshopLevel = save.levelId.startsWith(WORKSHOP_LEVEL_PREFIX);
@@ -1574,6 +1734,8 @@ export default function App() {
           levels={levels}
           workshopLevels={workshopLevels}
           save={save}
+          filters={hallFilters}
+          onFiltersChange={setHallFilters}
           onSelectLevel={switchLevel}
           onOpenTutorial={openTutorial}
           onOpenSettings={() => setSettingsOpen(true)}
