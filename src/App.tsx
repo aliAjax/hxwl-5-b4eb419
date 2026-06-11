@@ -9,16 +9,16 @@ import {
   type DailyChallengeRecord
 } from "./dailyChallenge";
 
-type Cell = [number, number];
+export type Cell = [number, number];
 
-type Piece = {
+export type Piece = {
   id: string;
   name: string;
   color: string;
   cells: Cell[];
 };
 
-type Level = {
+export type Level = {
   id: string;
   name: string;
   size: number;
@@ -468,7 +468,7 @@ function formatLastPlayed(isoString?: string): string {
   return date.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
 }
 
-type Stats = {
+export type Stats = {
   steps: number;
   rotations: number;
   resets: number;

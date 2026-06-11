@@ -34,16 +34,37 @@ export function getTodayDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
+const NO_RECORD = 999999;
+
+function createEmptyRecord(): DailyChallengeRecord {
+  return {
+    completed: false,
+    minSteps: NO_RECORD,
+    minRotations: NO_RECORD
+  };
+}
+
+function normalizeRecord(record: DailyChallengeRecord | null | undefined): DailyChallengeRecord {
+  if (!record) return createEmptyRecord();
+  return {
+    completed: !!record.completed,
+    completedAt: record.completedAt,
+    minSteps: typeof record.minSteps === "number" && isFinite(record.minSteps) ? record.minSteps : NO_RECORD,
+    minRotations: typeof record.minRotations === "number" && isFinite(record.minRotations) ? record.minRotations : NO_RECORD,
+    lastPlayed: record.lastPlayed
+  };
+}
+
 export function getDailyRecord(dateStr?: string): DailyChallengeRecord {
   const date = dateStr ?? getTodayDateString();
   const save = loadDailySave();
-  return save[date] ?? { completed: false, minSteps: Infinity, minRotations: Infinity };
+  return normalizeRecord(save[date]);
 }
 
 export function updateDailyRecord(stats: Stats): DailyChallengeRecord {
   const date = getTodayDateString();
   const save = loadDailySave();
-  const existing = save[date] ?? { completed: false, minSteps: Infinity, minRotations: Infinity };
+  const existing = normalizeRecord(save[date]);
   const updated: DailyChallengeRecord = {
     completed: true,
     completedAt: existing.completedAt ?? new Date().toISOString(),
@@ -59,7 +80,7 @@ export function updateDailyRecord(stats: Stats): DailyChallengeRecord {
 export function touchDailyPlayed() {
   const date = getTodayDateString();
   const save = loadDailySave();
-  const existing = save[date] ?? { completed: false, minSteps: Infinity, minRotations: Infinity };
+  const existing = normalizeRecord(save[date]);
   save[date] = { ...existing, lastPlayed: new Date().toISOString() };
   saveDailySave(save);
 }
