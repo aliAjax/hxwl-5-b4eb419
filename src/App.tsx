@@ -13,6 +13,8 @@ import {
   type DailyRecordWithDate
 } from "./dailyChallenge";
 import WorkshopPanel, { WORKSHOP_LEVEL_PREFIX } from "./WorkshopPanel";
+import ImportLevelDialog from "./ImportLevelDialog";
+import { exportLevelToJson, copyToClipboard } from "./levelImportExport";
 
 export type Cell = [number, number];
 
@@ -1075,7 +1077,9 @@ function LevelSelectHall({
   streak,
   onRenameLevel,
   onDeleteLevel,
-  onDuplicateLevel
+  onDuplicateLevel,
+  onExportLevel,
+  onOpenImport
 }: {
   levels: Level[];
   workshopLevels: Level[];
@@ -1095,6 +1099,8 @@ function LevelSelectHall({
   onRenameLevel: (levelId: string) => void;
   onDeleteLevel: (levelId: string) => void;
   onDuplicateLevel: (levelId: string) => void;
+  onExportLevel: (levelId: string) => void;
+  onOpenImport: () => void;
 }) {
   const completedCount = save.completed.length;
   const totalCount = levels.length + workshopLevels.length;
@@ -1234,6 +1240,16 @@ function LevelSelectHall({
               📋 复制
             </button>
             <button
+              className="card-action-btn export-btn-card"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExportLevel(item.id);
+              }}
+              title="导出"
+            >
+              📤 导出
+            </button>
+            <button
               className="card-action-btn delete-btn"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1259,6 +1275,9 @@ function LevelSelectHall({
         <div className="hall-actions">
           <button className="workshop-entry-btn" onClick={onOpenWorkshop}>
             ✨ 创作工坊
+          </button>
+          <button className="import-entry-btn" onClick={onOpenImport}>
+            📥 导入关卡
           </button>
           <button className="achievement-btn" onClick={onOpenAchievements}>
             🏆 成就
@@ -1622,6 +1641,7 @@ export default function App() {
   });
   const [renameLevelId, setRenameLevelId] = useState<string | null>(null);
   const [deleteLevelId, setDeleteLevelId] = useState<string | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [hoverCell, setHoverCell] = useState<Cell | null>(null);
   const [dailyCalendarOpen, setDailyCalendarOpen] = useState(false);
   const [dailyStreak, setDailyStreak] = useState(() => calculateStreak());
@@ -2009,6 +2029,21 @@ export default function App() {
     setWorkshopLevels(updated);
   }
 
+  function handleExportLevel(levelId: string) {
+    const level = workshopLevels.find((l) => l.id === levelId);
+    if (!level) return;
+    const json = exportLevelToJson(level);
+    copyToClipboard(json).catch(() => {});
+  }
+
+  function handleImportLevel(level: Level) {
+    setWorkshopLevels((current) => {
+      return [level, ...current].slice(0, 20);
+    });
+    setImportDialogOpen(false);
+    switchLevel(level.id);
+  }
+
   function backToHall() {
     hasInteractionRef.current = false;
     prevSolvedRef.current = false;
@@ -2129,6 +2164,8 @@ export default function App() {
           onRenameLevel={(id) => setRenameLevelId(id)}
           onDeleteLevel={(id) => setDeleteLevelId(id)}
           onDuplicateLevel={handleDuplicateLevel}
+          onExportLevel={handleExportLevel}
+          onOpenImport={() => setImportDialogOpen(true)}
         />
         <DailyCalendarPanel
           open={dailyCalendarOpen}
@@ -2143,6 +2180,15 @@ export default function App() {
           open={workshopOpen}
           onClose={() => setWorkshopOpen(false)}
           onPlayLevel={playWorkshopLevel}
+          onOpenImport={() => {
+            setWorkshopOpen(false);
+            setImportDialogOpen(true);
+          }}
+        />
+        <ImportLevelDialog
+          open={importDialogOpen}
+          onClose={() => setImportDialogOpen(false)}
+          onImport={handleImportLevel}
         />
         <RenameDialog
           open={renameLevelId !== null}

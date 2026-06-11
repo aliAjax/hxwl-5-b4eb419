@@ -8,6 +8,7 @@ import {
   type GeneratorProgress,
   WORKSHOP_LEVEL_PREFIX
 } from "./levelGenerator";
+import { exportLevelToJson, copyToClipboard} from "./levelImportExport";
 
 const PALETTE_PREVIEWS: Record<ColorPalette, string[]> = {
   classic: ["#54a0a8", "#d09b4c", "#c96161", "#7c70c7", "#df6f52"],
@@ -108,11 +109,13 @@ function MiniPiece({ piece }: { piece: Piece }) {
 export default function WorkshopPanel({
   open,
   onClose,
-  onPlayLevel
+  onPlayLevel,
+  onOpenImport
 }: {
   open: boolean;
   onClose: () => void;
   onPlayLevel: (level: Level) => void;
+  onOpenImport: () => void;
 }) {
   const [boardSize, setBoardSize] = useState(6);
   const [complexity, setComplexity] = useState<Complexity>("normal");
@@ -122,6 +125,7 @@ export default function WorkshopPanel({
   const [progress, setProgress] = useState<GeneratorProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Level | null>(null);
+  const [exported, setExported] = useState(false);
   const abortRef = useRef<{ aborted: boolean }>({ aborted: false });
 
   const maxPieceCount = useMemo(() => {
@@ -188,6 +192,17 @@ export default function WorkshopPanel({
     }
   }
 
+  function handleExport() {
+    if (!result) return;
+    const json = exportLevelToJson(result);
+    copyToClipboard(json)
+      .then(() => {
+        setExported(true);
+        setTimeout(() => setExported(false), 2000);
+      })
+      .catch(() => {});
+  }
+
   return (
     <div className="workshop-overlay" onClick={onClose}>
       <div className="workshop-panel" onClick={(e) => e.stopPropagation()}>
@@ -196,13 +211,22 @@ export default function WorkshopPanel({
             <p className="eyebrow workshop-eyebrow">✦ 创作工坊</p>
             <h2 className="workshop-title">生成专属符文关卡</h2>
           </div>
-          <button
-            className="workshop-close"
-            onClick={onClose}
-            aria-label="关闭创作工坊"
-          >
-            ×
-          </button>
+          <div className="workshop-header-actions">
+            <button
+              className="workshop-import-btn"
+              onClick={onOpenImport}
+              disabled={generating}
+            >
+              📥 导入关卡
+            </button>
+            <button
+              className="workshop-close"
+              onClick={onClose}
+              aria-label="关闭创作工坊"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         <div className="workshop-body">
@@ -360,9 +384,14 @@ export default function WorkshopPanel({
                 <div className="workshop-note">
                   ✓ 目标区域连通 · 碎片完全覆盖 · 至少一种解法存在
                 </div>
-                <button className="play-workshop-btn" onClick={handlePlay}>
-                  立即试玩 →
-                </button>
+                <div className="result-actions">
+                  <button className="export-btn" onClick={handleExport}>
+                    {exported ? "✓ 已复制" : "📤 导出关卡"}
+                  </button>
+                  <button className="play-workshop-btn" onClick={handlePlay}>
+                    立即试玩 →
+                  </button>
+                </div>
               </div>
             )}
 
